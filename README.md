@@ -31,7 +31,8 @@ This tool is designed to help you track the progress of open-weight models over 
 
 ## Usage
 
-Cuddly Potato is operated entirely from the command line. A database file named `cuddly_potato.db` will be automatically created in your project directory upon first use.
+Cuddly Potato is operated entirely from the command line. A database file named `cuddly_potato.db` will be automatically created in your current directory upon first use.  
+All commands accept a global `--db` option so you can point to any SQLite database file. If omitted, the default `cuddly_potato.db` in the working directory is used.
 
 ### Adding a New Entry
 
@@ -51,6 +52,12 @@ You can add a new entry in two ways:
     cuddly-potato add --question "What is the capital of France?" --model "Gemma3 27B" --answer "Paris" --domain "Geography" --subdomain "European Capitals" --comments "Initial test."
     ```
 
+You can point to a different database file by supplying the `--db` option:
+
+```bash
+cuddly-potato --db "~/Documents/LLM_Tests/gemma_progress.db" add --question "What is 2+2" --model "Gemma3" --answer "4"
+```
+
 ### Updating an Existing Entry
 
 To update an entry, you need to know its `id`. You can update one or more fields at a time.
@@ -67,6 +74,12 @@ To export all entries to a JSON file:
 
 ```bash
 cuddly-potato export my_llm_data.json
+```
+
+To export from a specific database:
+
+```bash
+cuddly-potato --db "~/Documents/LLM_Tests/gemma_progress.db" export "~/Desktop/gemma_export.json"
 ```
 
   * This will create a file named `my_llm_data.json` in your current directory containing all the records from the database.
