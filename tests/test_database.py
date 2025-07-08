@@ -2,7 +2,13 @@ import unittest
 import sqlite3
 import os
 import json
-from cuddly_potato.database import create_table, add_entry, update_entry, export_to_json
+from cuddly_potato.database import (
+    create_table,
+    add_entry,
+    update_entry,
+    export_to_json,
+    DatabaseError,
+)
 
 
 class TestDatabase(unittest.TestCase):
@@ -22,7 +28,7 @@ class TestDatabase(unittest.TestCase):
 
     def test_add_entry(self):
         """Test adding a new entry."""
-        result = add_entry(
+        add_entry(
             self.conn,
             "What is 2 + 2?",
             "TestModel",
@@ -31,7 +37,6 @@ class TestDatabase(unittest.TestCase):
             "Basic Math",
             "A test entry",
         )
-        self.assertEqual(result, "Entry added successfully.")
 
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM Youtubes WHERE question = ?", ("What is 2 + 2?",))
@@ -52,16 +57,16 @@ class TestDatabase(unittest.TestCase):
             "Basic Math",
             "First entry",
         )
-        result = add_entry(
-            self.conn,
-            "What is 2 + 2?",
-            "TestModel",
-            "4.0",
-            "Math",
-            "Basic Math",
-            "Second entry",
-        )
-        self.assertEqual(result, "Error: This question for this model already exists.")
+        with self.assertRaises(DatabaseError):
+            add_entry(
+                self.conn,
+                "What is 2 + 2?",
+                "TestModel",
+                "4.0",
+                "Math",
+                "Basic Math",
+                "Second entry",
+            )
 
     def test_update_entry(self):
         """Test updating an existing entry."""
@@ -79,7 +84,7 @@ class TestDatabase(unittest.TestCase):
         cursor.execute("SELECT id FROM Youtubes WHERE question = 'Old Question'")
         entry_id = cursor.fetchone()["id"]
 
-        result = update_entry(
+        update_entry(
             self.conn,
             entry_id,
             "New Question",
@@ -89,7 +94,6 @@ class TestDatabase(unittest.TestCase):
             "NewSub",
             "NewComment",
         )
-        self.assertEqual(result, "Entry updated successfully.")
 
         cursor.execute("SELECT * FROM Youtubes WHERE id = ?", (entry_id,))
         entry = cursor.fetchone()
@@ -99,10 +103,8 @@ class TestDatabase(unittest.TestCase):
 
     def test_update_nonexistent_entry(self):
         """Test updating an entry that does not exist."""
-        result = update_entry(
-            self.conn, 999, "New Question", None, None, None, None, None
-        )
-        self.assertEqual(result, "Error: No entry found with id 999.")
+        with self.assertRaises(DatabaseError):
+            update_entry(self.conn, 999, "New Question", None, None, None, None, None)
 
     def test_export_to_json(self):
         """Test exporting data to a JSON file."""
@@ -110,9 +112,8 @@ class TestDatabase(unittest.TestCase):
         add_entry(self.conn, "Q2", "M2", "A2", "D2", "S2", "C2")
 
         json_path = "test_export.json"
-        result = export_to_json(self.conn, json_path)
+        export_to_json(self.conn, json_path)
 
-        self.assertEqual(result, f"Data exported to {json_path}")
         self.assertTrue(os.path.exists(json_path))
 
         os.remove(json_path)
@@ -126,7 +127,7 @@ class TestDatabase(unittest.TestCase):
 
     def test_add_entry_with_missing_optional_fields(self):
         """Test adding an entry with only the required fields."""
-        result = add_entry(
+        add_entry(
             self.conn,
             "Required only?",
             "TestModel",
@@ -135,7 +136,6 @@ class TestDatabase(unittest.TestCase):
             None,
             None,
         )
-        self.assertEqual(result, "Entry added successfully.")
 
         cursor = self.conn.cursor()
         cursor.execute(
@@ -164,7 +164,7 @@ class TestDatabase(unittest.TestCase):
         cursor.execute("SELECT id FROM Youtubes WHERE question = 'Initial Q'")
         entry_id = cursor.fetchone()["id"]
 
-        result = update_entry(
+        update_entry(
             self.conn,
             entry_id,
             None,
@@ -174,7 +174,6 @@ class TestDatabase(unittest.TestCase):
             None,
             None,
         )
-        self.assertEqual(result, "Entry updated successfully.")
 
         cursor.execute("SELECT * FROM Youtubes WHERE id = ?", (entry_id,))
         entry = cursor.fetchone()
@@ -191,27 +190,23 @@ class TestDatabase(unittest.TestCase):
         cursor.execute("SELECT id FROM Youtubes WHERE question = 'Unique Q2'")
         entry_id_to_update = cursor.fetchone()["id"]
 
-        result = update_entry(
-            self.conn,
-            entry_id_to_update,
-            "Unique Q1",
-            "ModelA",
-            "A3",
-            None,
-            None,
-            None,
-        )
-        self.assertEqual(
-            result,
-            "Error: Update would create a duplicate question for the same model.",
-        )
+        with self.assertRaises(DatabaseError):
+            update_entry(
+                self.conn,
+                entry_id_to_update,
+                "Unique Q1",
+                "ModelA",
+                "A3",
+                None,
+                None,
+                None,
+            )
 
     def test_export_to_json_empty_db(self):
         """Test exporting an empty database results in an empty JSON list."""
         json_path = "test_empty_export.json"
-        result = export_to_json(self.conn, json_path)
+        export_to_json(self.conn, json_path)
 
-        self.assertEqual(result, f"Data exported to {json_path}")
         self.assertTrue(os.path.exists(json_path))
 
         with open(json_path, "r") as f:

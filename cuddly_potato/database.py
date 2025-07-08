@@ -3,31 +3,43 @@ import json
 from datetime import datetime
 
 
+class DatabaseError(Exception):
+    """Custom exception for database errors."""
+
+    pass
+
+
 def get_db_connection(db_path="cuddly_potato.db"):
     """Establishes a connection to the SQLite database."""
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+    except sqlite3.Error as e:
+        raise DatabaseError(f"Could not connect to database at '{db_path}': {e}")
 
 
 def create_table(conn):
     """Creates the Youtubes table if it doesn't exist."""
-    with conn:
-        conn.execute(
+    try:
+        with conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS Youtubes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    question TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    domain TEXT,
+                    subdomain TEXT,
+                    comments TEXT,
+                    UNIQUE(question, model)
+                )
             """
-            CREATE TABLE IF NOT EXISTS Youtubes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                question TEXT NOT NULL,
-                model TEXT NOT NULL,
-                answer TEXT NOT NULL,
-                date TEXT NOT NULL,
-                domain TEXT,
-                subdomain TEXT,
-                comments TEXT,
-                UNIQUE(question, model)
             )
-        """
-        )
+    except sqlite3.Error as e:
+        raise DatabaseError(f"Failed to create table: {e}")
 
 
 def add_entry(conn, question, model, answer, domain, subdomain, comments):
@@ -49,9 +61,10 @@ def add_entry(conn, question, model, answer, domain, subdomain, comments):
                     comments,
                 ),
             )
-            return "Entry added successfully."
         except sqlite3.IntegrityError:
-            return "Error: This question for this model already exists."
+            raise DatabaseError("This question for this model already exists.")
+        except sqlite3.Error as e:
+            raise DatabaseError(f"An unexpected database error occurred: {e}")
 
 
 def update_entry(conn, entry_id, question, model, answer, domain, subdomain, comments):
@@ -60,7 +73,7 @@ def update_entry(conn, entry_id, question, model, answer, domain, subdomain, com
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM Youtubes WHERE id = ?", (entry_id,))
         if cursor.fetchone() is None:
-            return f"Error: No entry found with id {entry_id}."
+            raise DatabaseError(f"No entry found with id {entry_id}.")
 
         updates = []
         params = []
@@ -84,7 +97,7 @@ def update_entry(conn, entry_id, question, model, answer, domain, subdomain, com
             params.append(comments)
 
         if not updates:
-            return "No fields to update."
+            return
 
         params.append(entry_id)
 
@@ -97,19 +110,26 @@ def update_entry(conn, entry_id, question, model, answer, domain, subdomain, com
             """,
                 tuple(params),
             )
-            return "Entry updated successfully."
         except sqlite3.IntegrityError:
-            return "Error: Update would create a duplicate question for the same model."
+            raise DatabaseError(
+                "Update would create a duplicate question for the same model."
+            )
+        except sqlite3.Error as e:
+            raise DatabaseError(
+                f"An unexpected database error occurred during update: {e}"
+            )
 
 
 def export_to_json(conn, output_path):
     """Exports all question-answer pairs to a JSON file."""
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM Youtubes")
-    rows = cursor.fetchall()
-
-    data = [dict(row) for row in rows]
-
-    with open(output_path, "w") as f:
-        json.dump(data, f, indent=4)
-    return f"Data exported to {output_path}"
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM Youtubes")
+        rows = cursor.fetchall()
+        data = [dict(row) for row in rows]
+        with open(output_path, "w") as f:
+            json.dump(data, f, indent=4)
+    except IOError as e:
+        raise DatabaseError(f"Could not write to file '{output_path}': {e}")
+    except sqlite3.Error as e:
+        raise DatabaseError(f"Failed to fetch data for export: {e}")

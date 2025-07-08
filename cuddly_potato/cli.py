@@ -1,12 +1,14 @@
 import click
 import os
 import json
+from rich.console import Console
 from .database import (
     get_db_connection,
     create_table,
     add_entry,
     update_entry,
     export_to_json,
+    DatabaseError,
 )
 from .gui import launch_gui
 
@@ -37,6 +39,9 @@ def save_last_db_path(db_path):
 
 # --- End of New Code ---
 
+# Create a console object for rich output
+console = Console()
+
 
 @click.group()
 @click.option(
@@ -47,7 +52,6 @@ def save_last_db_path(db_path):
 @click.pass_context
 def cli(ctx, db):
     """A CLI tool to manage question-answer pairs for LLMs."""
-
     last_db_path = load_last_db_path()
 
     if db is None:
@@ -60,9 +64,13 @@ def cli(ctx, db):
         save_last_db_path(os.path.abspath(db_path))
 
     ctx.obj = {"DB_PATH": db_path}
-    conn = get_db_connection(db_path)
-    create_table(conn)
-    conn.close()
+    try:
+        conn = get_db_connection(db_path)
+        create_table(conn)
+        conn.close()
+    except DatabaseError as e:
+        console.print(f"[bold red]❌ Error: {e}[/bold red]")
+        ctx.exit(1)
 
 
 @cli.command()
@@ -76,9 +84,13 @@ def cli(ctx, db):
 def add(ctx, question, model, answer, domain, subdomain, comments):
     """Add a new question-answer entry."""
     conn = get_db_connection(ctx.obj["DB_PATH"])
-    result = add_entry(conn, question, model, answer, domain, subdomain, comments)
-    conn.close()
-    click.echo(result)
+    try:
+        add_entry(conn, question, model, answer, domain, subdomain, comments)
+        console.print("[bold green]✅ Entry added successfully![/bold green]")
+    except DatabaseError as e:
+        console.print(f"[bold red]❌ Error: {e}[/bold red]")
+    finally:
+        conn.close()
 
 
 @cli.command()
@@ -93,11 +105,17 @@ def add(ctx, question, model, answer, domain, subdomain, comments):
 def update(ctx, entry_id, question, model, answer, domain, subdomain, comments):
     """Update an existing entry by its ID."""
     conn = get_db_connection(ctx.obj["DB_PATH"])
-    result = update_entry(
-        conn, entry_id, question, model, answer, domain, subdomain, comments
-    )
-    conn.close()
-    click.echo(result)
+    try:
+        update_entry(
+            conn, entry_id, question, model, answer, domain, subdomain, comments
+        )
+        console.print(
+            f"[bold green]✅ Entry {entry_id} updated successfully![/bold green]"
+        )
+    except DatabaseError as e:
+        console.print(f"[bold red]❌ Error: {e}[/bold red]")
+    finally:
+        conn.close()
 
 
 @cli.command()
@@ -106,9 +124,13 @@ def update(ctx, entry_id, question, model, answer, domain, subdomain, comments):
 def export(ctx, output_path):
     """Export the database to a JSON file."""
     conn = get_db_connection(ctx.obj["DB_PATH"])
-    result = export_to_json(conn, output_path)
-    conn.close()
-    click.echo(result)
+    try:
+        export_to_json(conn, output_path)
+        console.print(f"[bold blue]📄 Data exported to {output_path}[/bold blue]")
+    except DatabaseError as e:
+        console.print(f"[bold red]❌ Error: {e}[/bold red]")
+    finally:
+        conn.close()
 
 
 @cli.command()
