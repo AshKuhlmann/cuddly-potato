@@ -1,0 +1,11 @@
+#!/bin/sh
+# Pre-commit helper mirroring the CI workflow. Fails if any step does not pass.
+set -e
+
+# Run formatters and linters using Poetry
+poetry run black --check .
+poetry run ruff check .
+poetry run mypy loopbloom
+poetry run pytest --cov=loopbloom --cov-fail-under=80 -q
+# Ensure the package can be installed
+python -m pip install .
