@@ -1,4 +1,6 @@
 import click
+import os
+import json
 from .database import (
     get_db_connection,
     create_table,
@@ -8,16 +10,57 @@ from .database import (
 )
 from .gui import launch_gui
 
+# --- Start of New Code ---
+# Define the path for the configuration file in the user's home directory
+CONFIG_DIR = os.path.expanduser("~/.cuddly-potato")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
+
+
+def load_last_db_path():
+    """Load the last used database path from the config file."""
+    if not os.path.exists(CONFIG_FILE):
+        return None
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            config = json.load(f)
+            return config.get("last_db_path")
+    except (json.JSONDecodeError, IOError):
+        return None
+
+
+def save_last_db_path(db_path):
+    """Save the given database path to the config file."""
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump({"last_db_path": db_path}, f)
+
+
+# --- End of New Code ---
+
 
 @click.group()
 @click.option(
-    "--db", default="cuddly_potato.db", help="The path to the SQLite database file."
+    "--db",
+    default=None,  # Set default to None to handle memory logic
+    help="The path to the SQLite database file. Remembers the last used path.",
 )
 @click.pass_context
 def cli(ctx, db):
     """A CLI tool to manage question-answer pairs for LLMs."""
-    ctx.obj = {"DB_PATH": db}
-    conn = get_db_connection(db)
+
+    last_db_path = load_last_db_path()
+
+    if db is None:
+        db_path = last_db_path if last_db_path else "cuddly_potato.db"
+    else:
+        db_path = db
+        save_last_db_path(db_path)
+
+    if db is None and not last_db_path and not os.path.isabs(db_path):
+        save_last_db_path(os.path.abspath(db_path))
+
+    ctx.obj = {"DB_PATH": db_path}
+    conn = get_db_connection(db_path)
     create_table(conn)
     conn.close()
 

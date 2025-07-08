@@ -92,6 +92,36 @@ class TestCli(unittest.TestCase):
         self.runner.invoke(cli, ["--db", self.db_path, "add"], input="Q\nM\nA\n\n\n\n")
         self.assertTrue(os.path.exists(self.db_path))
 
+    def test_memory_uses_last_database(self):
+        """Test that the CLI remembers the last used database path."""
+        with self.runner.isolated_filesystem():
+            home = os.getcwd()
+            env = {"HOME": home}
+            db_path = os.path.join(home, "mem.db")
+
+            self.runner.invoke(
+                cli,
+                ["--db", db_path, "add"],
+                input="Q1\nM\nA1\n\n\n\n",
+                env=env,
+            )
+
+            result = self.runner.invoke(
+                cli, ["add"], input="Q2\nM\nA2\n\n\n\n", env=env
+            )
+
+            self.assertEqual(result.exit_code, 0)
+
+            import sqlite3
+
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM Youtubes")
+            count = cursor.fetchone()[0]
+            conn.close()
+
+            self.assertEqual(count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
