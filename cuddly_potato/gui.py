@@ -1,4 +1,6 @@
 import customtkinter as ctk  # type: ignore
+import os
+import json
 from tkinter import filedialog, PhotoImage
 from .database import get_db_connection, create_table, add_entry
 
@@ -12,6 +14,33 @@ ICON_BASE64 = (
     "5osTIVLcGTK2DJHy3qDRM8QQd4eNJdld/T9giYxnD30VpgVoFIAWoFEAWoBGAWgBGgWgBWgUgBagUQBa"
     "gOYDSKBZnljcWAkAAAAASUVORK5CYII="
 )
+
+# --- Start of New Code ---
+# Define the path for the configuration file in the user's home directory
+CONFIG_DIR = os.path.expanduser("~/.cuddly-potato")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
+
+
+def load_last_db_path():
+    """Load the last used database path from the config file."""
+    if not os.path.exists(CONFIG_FILE):
+        return None
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            config = json.load(f)
+            return config.get("last_db_path")
+    except (json.JSONDecodeError, IOError):
+        return None
+
+
+def save_last_db_path(db_path):
+    """Save the given database path to the config file."""
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump({"last_db_path": db_path}, f)
+
+
+# --- End of New Code ---
 
 
 class App(ctk.CTk):
@@ -32,7 +61,10 @@ class App(ctk.CTk):
         ctk.set_default_color_theme("blue")
         self.grid_columnconfigure(1, weight=1)
 
-        self.db_path = "cuddly_potato.db"
+        last_db_path = load_last_db_path()
+        self.db_path = last_db_path if last_db_path else "cuddly_potato.db"
+        if not last_db_path and not os.path.isabs(self.db_path):
+            save_last_db_path(os.path.abspath(self.db_path))
 
         # --- Widget Creation ---
 
@@ -113,6 +145,7 @@ class App(ctk.CTk):
         )
         if path:
             self.db_path = path
+            save_last_db_path(self.db_path)  # Save the new path
             display_path = self.db_path
             if len(display_path) > 60:
                 display_path = "..." + display_path[-57:]
@@ -139,18 +172,15 @@ class App(ctk.CTk):
         try:
             conn = get_db_connection(self.db_path)
             create_table(conn)
-            result = add_entry(
-                conn, question, model, answer, domain, subdomain, comments=None
-            )
+            add_entry(conn, question, model, answer, domain, subdomain, comments=None)
             conn.close()
 
-            if "successfully" in result:
-                self.status_label.configure(text=result, text_color="green")
-                self.question_textbox.delete("1.0", "end")
-                self.answer_textbox.delete("1.0", "end")
-                self.model_entry.delete(0, "end")
-            else:
-                self.status_label.configure(text=result, text_color="orange")
+            self.status_label.configure(
+                text="Entry added successfully!", text_color="green"
+            )
+            self.question_textbox.delete("1.0", "end")
+            self.answer_textbox.delete("1.0", "end")
+            self.model_entry.delete(0, "end")
         except Exception as e:  # pragma: no cover - handle runtime errors
             self.status_label.configure(text=f"Error: {e}", text_color="red")
 
