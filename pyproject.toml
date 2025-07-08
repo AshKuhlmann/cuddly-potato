@@ -8,6 +8,7 @@ packages = [{ include = "cuddly_potato" }]
 [tool.poetry.dependencies]
 python = "^3.10"
 Click = "*"
+rich = "*"
 customtkinter = "*"
 
 [tool.poetry.group.dev.dependencies]
