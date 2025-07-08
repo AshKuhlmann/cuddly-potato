@@ -8,6 +8,7 @@ packages = [{ include = "cuddly_potato" }]
 [tool.poetry.dependencies]
 python = "^3.10"
 Click = "*"
+customtkinter = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
@@ -18,6 +19,9 @@ pytest-cov = "*"
 
 [tool.poetry.scripts]
 cuddly-potato = "cuddly_potato.cli:cli"
+
+[tool.coverage.run]
+omit = ["cuddly_potato/gui.py"]
 
 [build-system]
 requires = ["poetry-core"]

@@ -6,6 +6,7 @@ from .database import (
     update_entry,
     export_to_json,
 )
+from .gui import launch_gui
 
 
 @click.group()
@@ -65,6 +66,12 @@ def export(ctx, output_path):
     result = export_to_json(conn, output_path)
     conn.close()
     click.echo(result)
+
+
+@cli.command()
+def gui():
+    """Launch the graphical user interface."""
+    launch_gui()
 
 
 if __name__ == "__main__":
