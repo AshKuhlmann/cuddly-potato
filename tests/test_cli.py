@@ -1,5 +1,6 @@
 import unittest
 import os
+import json
 from click.testing import CliRunner
 from cuddly_potato.cli import cli
 
@@ -16,6 +17,8 @@ class TestCli(unittest.TestCase):
             os.remove(self.db_path)
         if os.path.exists("cli_export.json"):
             os.remove("cli_export.json")
+        if os.path.exists("multiple_export.json"):
+            os.remove("multiple_export.json")
 
     def test_add_command(self):
         """Test the 'add' command with all options."""
@@ -121,6 +124,40 @@ class TestCli(unittest.TestCase):
             conn.close()
 
             self.assertEqual(count, 2)
+
+    def test_export_multiple_entries(self):
+        """Test adding multiple entries and then exporting them."""
+        with self.runner.isolated_filesystem():
+            db_path = "test_export_multiple.db"
+            for i in range(5):
+                self.runner.invoke(
+                    cli,
+                    [
+                        "--db",
+                        db_path,
+                        "add",
+                        "--question",
+                        f"Question {i}",
+                        "--model",
+                        "Test Model",
+                        "--answer",
+                        f"Answer {i}",
+                    ],
+                    catch_exceptions=False,
+                )
+
+            export_file = "multiple_export.json"
+            result = self.runner.invoke(
+                cli,
+                ["--db", db_path, "export", export_file],
+            )
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertTrue(os.path.exists(export_file))
+
+            with open(export_file, "r") as f:
+                data = json.load(f)
+            self.assertEqual(len(data), 5)
 
 
 if __name__ == "__main__":
