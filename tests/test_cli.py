@@ -40,7 +40,7 @@ class TestCli(unittest.TestCase):
             ],
         )
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("Entry added successfully.", result.output)
+        self.assertIn("Entry added successfully", result.output)
 
     def test_add_command_interactive(self):
         """Test the 'add' command works with interactive prompts."""
@@ -51,7 +51,7 @@ class TestCli(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("Entry added successfully.", result.output)
+        self.assertIn("Entry added successfully", result.output)
         self.assertIn("Interactive Q", result.output)
 
     def test_update_command(self):
@@ -66,7 +66,7 @@ class TestCli(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("Entry updated successfully.", result.output)
+        self.assertIn("updated successfully", result.output)
 
     def test_export_command(self):
         """Test that the 'export' command creates a valid JSON file."""

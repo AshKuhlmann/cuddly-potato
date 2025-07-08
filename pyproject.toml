@@ -9,6 +9,7 @@ packages = [{ include = "cuddly_potato" }]
 python = "^3.10"
 Click = "*"
 customtkinter = "*"
+rich = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"

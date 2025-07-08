@@ -1,6 +1,6 @@
 import customtkinter as ctk  # type: ignore
 from tkinter import filedialog, PhotoImage
-from .database import get_db_connection, create_table, add_entry
+from .database import get_db_connection, create_table, add_entry, DatabaseError
 
 # base64-encoded PNG icon used for the application window
 ICON_BASE64 = (
@@ -139,19 +139,16 @@ class App(ctk.CTk):
         try:
             conn = get_db_connection(self.db_path)
             create_table(conn)
-            result = add_entry(
-                conn, question, model, answer, domain, subdomain, comments=None
-            )
+            add_entry(conn, question, model, answer, domain, subdomain, comments=None)
             conn.close()
 
-            if "successfully" in result:
-                self.status_label.configure(text=result, text_color="green")
-                self.question_textbox.delete("1.0", "end")
-                self.answer_textbox.delete("1.0", "end")
-                self.model_entry.delete(0, "end")
-            else:
-                self.status_label.configure(text=result, text_color="orange")
-        except Exception as e:  # pragma: no cover - handle runtime errors
+            self.status_label.configure(
+                text="Entry added successfully!", text_color="green"
+            )
+            self.question_textbox.delete("1.0", "end")
+            self.answer_textbox.delete("1.0", "end")
+            self.model_entry.delete(0, "end")
+        except DatabaseError as e:  # pragma: no cover - handle runtime errors
             self.status_label.configure(text=f"Error: {e}", text_color="red")
 
 
