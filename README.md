@@ -12,6 +12,7 @@ This tool is designed to help you track the progress of open-weight models over 
   * **SQLite Backend**: All data is stored in a simple, file-based SQLite database.
   * **Unique Constraints**: Prevents duplicate entries for the same question and model combination.
   * **Well-Tested**: Comes with a full test suite to ensure reliability.
+  * **Remembers Last Database**: Automatically uses the last database you worked with unless a new one is specified.
 
 ## Installation
 
@@ -31,8 +32,8 @@ This tool is designed to help you track the progress of open-weight models over 
 
 ## Usage
 
-Cuddly Potato is operated entirely from the command line. A database file named `cuddly_potato.db` will be automatically created in your current directory upon first use.  
-All commands accept a global `--db` option so you can point to any SQLite database file. If omitted, the default `cuddly_potato.db` in the working directory is used.
+Cuddly Potato is operated entirely from the command line. A database file named `cuddly_potato.db` will be automatically created in your current directory upon first use.
+All commands accept a global `--db` option so you can point to any SQLite database file. If omitted, the tool remembers the last database you used and falls back to `cuddly_potato.db` in the working directory if none has been saved yet.
 
 ### Adding a New Entry
 
