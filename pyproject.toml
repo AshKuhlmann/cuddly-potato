@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "cuddly-potato"
+version = "0.1.0"
+description = "Cuddly Potato CLI tool"
+authors = ["Your Name <you@example.com>"]
+packages = [{ include = "cuddly_potato" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+Click = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+black = "*"
+ruff = "*"
+mypy = "*"
+pytest-cov = "*"
+
+[tool.poetry.scripts]
+cuddly-potato = "cuddly_potato.cli:cli"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
