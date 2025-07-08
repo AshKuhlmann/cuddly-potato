@@ -105,7 +105,7 @@ class App(ctk.CTk):
 
     def select_db(self):
         """Opens a file dialog to select the database file."""
-        path = filedialog.asksaveasfilename(
+        path = filedialog.askopenfilename(
             title="Select or Create Database File",
             initialfile="cuddly_potato.db",
             defaultextension=".db",
