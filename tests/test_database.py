@@ -1,6 +1,7 @@
 import unittest
 import sqlite3
 import os
+import json
 from cuddly_potato.database import create_table, add_entry, update_entry, export_to_json
 
 
@@ -113,6 +114,109 @@ class TestDatabase(unittest.TestCase):
 
         self.assertEqual(result, f"Data exported to {json_path}")
         self.assertTrue(os.path.exists(json_path))
+
+        os.remove(json_path)
+
+    def test_create_table_idempotent(self):
+        """Test that calling create_table multiple times doesn't cause errors."""
+        try:
+            create_table(self.conn)
+        except Exception as e:  # pragma: no cover - fail if any exception
+            self.fail(f"create_table() raised an exception on second call: {e}")
+
+    def test_add_entry_with_missing_optional_fields(self):
+        """Test adding an entry with only the required fields."""
+        result = add_entry(
+            self.conn,
+            "Required only?",
+            "TestModel",
+            "Yes",
+            None,
+            None,
+            None,
+        )
+        self.assertEqual(result, "Entry added successfully.")
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM Youtubes WHERE question = ?",
+            ("Required only?",),
+        )
+        entry = cursor.fetchone()
+
+        self.assertIsNotNone(entry)
+        self.assertIsNone(entry["domain"])
+        self.assertIsNone(entry["subdomain"])
+        self.assertIsNone(entry["comments"])
+
+    def test_update_entry_partial(self):
+        """Test updating only a single field of an existing entry."""
+        add_entry(
+            self.conn,
+            "Initial Q",
+            "ModelX",
+            "Initial A",
+            "DomainX",
+            "SubX",
+            "CommentX",
+        )
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id FROM Youtubes WHERE question = 'Initial Q'")
+        entry_id = cursor.fetchone()["id"]
+
+        result = update_entry(
+            self.conn,
+            entry_id,
+            None,
+            None,
+            "Updated Answer Only",
+            None,
+            None,
+            None,
+        )
+        self.assertEqual(result, "Entry updated successfully.")
+
+        cursor.execute("SELECT * FROM Youtubes WHERE id = ?", (entry_id,))
+        entry = cursor.fetchone()
+
+        self.assertEqual(entry["question"], "Initial Q")
+        self.assertEqual(entry["answer"], "Updated Answer Only")
+
+    def test_update_entry_to_create_duplicate(self):
+        """Test that an update fails if it creates a duplicate question/model pair."""
+        add_entry(self.conn, "Unique Q1", "ModelA", "A1", None, None, None)
+        add_entry(self.conn, "Unique Q2", "ModelA", "A2", None, None, None)
+
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT id FROM Youtubes WHERE question = 'Unique Q2'")
+        entry_id_to_update = cursor.fetchone()["id"]
+
+        result = update_entry(
+            self.conn,
+            entry_id_to_update,
+            "Unique Q1",
+            "ModelA",
+            "A3",
+            None,
+            None,
+            None,
+        )
+        self.assertEqual(
+            result,
+            "Error: Update would create a duplicate question for the same model.",
+        )
+
+    def test_export_to_json_empty_db(self):
+        """Test exporting an empty database results in an empty JSON list."""
+        json_path = "test_empty_export.json"
+        result = export_to_json(self.conn, json_path)
+
+        self.assertEqual(result, f"Data exported to {json_path}")
+        self.assertTrue(os.path.exists(json_path))
+
+        with open(json_path, "r") as f:
+            data = json.load(f)
+        self.assertEqual(data, [])
 
         os.remove(json_path)
 
