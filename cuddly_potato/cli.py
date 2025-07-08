@@ -9,11 +9,16 @@ from .database import (
 
 
 @click.group()
+@click.option(
+    "--db", default="cuddly_potato.db", help="The path to the SQLite database file."
+)
 @click.pass_context
-def cli(ctx):
+def cli(ctx, db):
     """A CLI tool to manage question-answer pairs for LLMs."""
-    ctx.obj = get_db_connection()
-    create_table(ctx.obj)
+    ctx.obj = {"DB_PATH": db}
+    conn = get_db_connection(db)
+    create_table(conn)
+    conn.close()
 
 
 @cli.command()
@@ -26,7 +31,9 @@ def cli(ctx):
 @click.pass_context
 def add(ctx, question, model, answer, domain, subdomain, comments):
     """Add a new question-answer entry."""
-    result = add_entry(ctx.obj, question, model, answer, domain, subdomain, comments)
+    conn = get_db_connection(ctx.obj["DB_PATH"])
+    result = add_entry(conn, question, model, answer, domain, subdomain, comments)
+    conn.close()
     click.echo(result)
 
 
@@ -41,9 +48,11 @@ def add(ctx, question, model, answer, domain, subdomain, comments):
 @click.pass_context
 def update(ctx, entry_id, question, model, answer, domain, subdomain, comments):
     """Update an existing entry by its ID."""
+    conn = get_db_connection(ctx.obj["DB_PATH"])
     result = update_entry(
-        ctx.obj, entry_id, question, model, answer, domain, subdomain, comments
+        conn, entry_id, question, model, answer, domain, subdomain, comments
     )
+    conn.close()
     click.echo(result)
 
 
@@ -52,7 +61,9 @@ def update(ctx, entry_id, question, model, answer, domain, subdomain, comments):
 @click.pass_context
 def export(ctx, output_path):
     """Export the database to a JSON file."""
-    result = export_to_json(ctx.obj, output_path)
+    conn = get_db_connection(ctx.obj["DB_PATH"])
+    result = export_to_json(conn, output_path)
+    conn.close()
     click.echo(result)
 
 
