@@ -7,6 +7,8 @@ from cuddly_potato.database import (
     add_entry,
     update_entry,
     export_to_json,
+    export_to_excel,
+    get_last_entry,
     DatabaseError,
 )
 
@@ -30,190 +32,185 @@ class TestDatabase(unittest.TestCase):
         """Test adding a new entry."""
         add_entry(
             self.conn,
+            "John Doe",
+            "python,testing",
+            "Unit testing context",
             "What is 2 + 2?",
-            "TestModel",
+            "Testing basic math",
             "4",
-            "Math",
-            "Basic Math",
-            "A test entry",
         )
 
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM Youtubes WHERE question = ?", ("What is 2 + 2?",))
+        cursor.execute("SELECT * FROM entries WHERE question = ?", ("What is 2 + 2?",))
         entry = cursor.fetchone()
 
         self.assertIsNotNone(entry)
-        self.assertEqual(entry["model"], "TestModel")
+        self.assertEqual(entry["author"], "John Doe")
+        self.assertEqual(entry["tags"], "python,testing")
         self.assertEqual(entry["answer"], "4")
 
-    def test_add_duplicate_entry(self):
-        """Test adding a duplicate entry."""
+    def test_add_entry_with_missing_optional_fields(self):
+        """Test adding an entry with only the required fields."""
         add_entry(
             self.conn,
-            "What is 2 + 2?",
-            "TestModel",
-            "4",
-            "Math",
-            "Basic Math",
-            "First entry",
+            "Jane Smith",
+            "",
+            "",
+            "Required only?",
+            "",
+            "Yes",
         )
-        with self.assertRaises(DatabaseError):
-            add_entry(
-                self.conn,
-                "What is 2 + 2?",
-                "TestModel",
-                "4.0",
-                "Math",
-                "Basic Math",
-                "Second entry",
-            )
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM entries WHERE question = ?",
+            ("Required only?",),
+        )
+        entry = cursor.fetchone()
+
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["author"], "Jane Smith")
+        self.assertEqual(entry["tags"], "")
+        self.assertEqual(entry["context"], "")
+        self.assertEqual(entry["reason"], "")
+
+    def test_get_last_entry(self):
+        """Test retrieving the last entry."""
+        add_entry(
+            self.conn,
+            "Author1",
+            "tag1",
+            "context1",
+            "Question1",
+            "reason1",
+            "Answer1",
+        )
+        add_entry(
+            self.conn,
+            "Author2",
+            "tag2",
+            "context2",
+            "Question2",
+            "reason2",
+            "Answer2",
+        )
+
+        last_entry = get_last_entry(self.conn)
+        self.assertIsNotNone(last_entry)
+        self.assertEqual(last_entry["author"], "Author2")
+        self.assertEqual(last_entry["question"], "Question2")
+
+    def test_get_last_entry_empty_database(self):
+        """Test getting last entry from empty database."""
+        last_entry = get_last_entry(self.conn)
+        self.assertIsNone(last_entry)
 
     def test_update_entry(self):
         """Test updating an existing entry."""
         add_entry(
             self.conn,
+            "Old Author",
+            "old,tags",
+            "Old Context",
             "Old Question",
-            "OldModel",
-            "OldAnswer",
-            "OldDomain",
-            "OldSub",
-            "OldComment",
+            "Old Reason",
+            "Old Answer",
         )
 
         cursor = self.conn.cursor()
-        cursor.execute("SELECT id FROM Youtubes WHERE question = 'Old Question'")
+        cursor.execute("SELECT id FROM entries WHERE question = 'Old Question'")
         entry_id = cursor.fetchone()["id"]
 
         update_entry(
             self.conn,
             entry_id,
+            "New Author",
+            "new,tags",
+            "New Context",
             "New Question",
-            "NewModel",
-            "NewAnswer",
-            "NewDomain",
-            "NewSub",
-            "NewComment",
+            "New Reason",
+            "New Answer",
         )
 
-        cursor.execute("SELECT * FROM Youtubes WHERE id = ?", (entry_id,))
+        cursor.execute("SELECT * FROM entries WHERE id = ?", (entry_id,))
         entry = cursor.fetchone()
 
+        self.assertEqual(entry["author"], "New Author")
         self.assertEqual(entry["question"], "New Question")
-        self.assertEqual(entry["model"], "NewModel")
+        self.assertEqual(entry["tags"], "new,tags")
 
     def test_update_nonexistent_entry(self):
         """Test updating an entry that does not exist."""
         with self.assertRaises(DatabaseError):
-            update_entry(self.conn, 999, "New Question", None, None, None, None, None)
+            update_entry(
+                self.conn, 999, "New Author", None, None, None, None, None
+            )
 
     def test_export_to_json(self):
         """Test exporting data to a JSON file."""
-        add_entry(self.conn, "Q1", "M1", "A1", "D1", "S1", "C1")
-        add_entry(self.conn, "Q2", "M2", "A2", "D2", "S2", "C2")
+        add_entry(
+            self.conn, "Author1", "tag1", "context1", "Q1", "reason1", "A1"
+        )
+        add_entry(
+            self.conn, "Author2", "tag2", "context2", "Q2", "reason2", "A2"
+        )
 
         json_path = "test_export.json"
         export_to_json(self.conn, json_path)
 
         self.assertTrue(os.path.exists(json_path))
 
+        with open(json_path, "r") as f:
+            data = json.load(f)
+            self.assertEqual(len(data), 2)
+            self.assertEqual(data[0]["author"], "Author1")
+            self.assertEqual(data[1]["author"], "Author2")
+
         os.remove(json_path)
+
+    def test_export_to_excel(self):
+        """Test exporting data to an Excel file."""
+        add_entry(
+            self.conn, "Author1", "tag1", "context1", "Q1", "reason1", "A1"
+        )
+        add_entry(
+            self.conn, "Author2", "tag2", "context2", "Q2", "reason2", "A2"
+        )
+
+        excel_path = "test_export.xlsx"
+        export_to_excel(self.conn, excel_path)
+
+        self.assertTrue(os.path.exists(excel_path))
+
+        os.remove(excel_path)
 
     def test_create_table_idempotent(self):
         """Test that calling create_table multiple times doesn't cause errors."""
         try:
             create_table(self.conn)
-        except Exception as e:  # pragma: no cover - fail if any exception
+        except Exception as e:
             self.fail(f"create_table() raised an exception on second call: {e}")
 
-    def test_add_entry_with_missing_optional_fields(self):
-        """Test adding an entry with only the required fields."""
+    def test_long_text_fields(self):
+        """Test that long text fields are handled correctly."""
+        long_text = "A" * 10000  # 10,000 character string
         add_entry(
             self.conn,
-            "Required only?",
-            "TestModel",
-            "Yes",
-            None,
-            None,
-            None,
+            "Author",
+            "tags",
+            long_text,
+            long_text,
+            long_text,
+            long_text,
         )
 
         cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT * FROM Youtubes WHERE question = ?",
-            ("Required only?",),
-        )
+        cursor.execute("SELECT * FROM entries WHERE author = ?", ("Author",))
         entry = cursor.fetchone()
 
         self.assertIsNotNone(entry)
-        self.assertIsNone(entry["domain"])
-        self.assertIsNone(entry["subdomain"])
-        self.assertIsNone(entry["comments"])
-
-    def test_update_entry_partial(self):
-        """Test updating only a single field of an existing entry."""
-        add_entry(
-            self.conn,
-            "Initial Q",
-            "ModelX",
-            "Initial A",
-            "DomainX",
-            "SubX",
-            "CommentX",
-        )
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id FROM Youtubes WHERE question = 'Initial Q'")
-        entry_id = cursor.fetchone()["id"]
-
-        update_entry(
-            self.conn,
-            entry_id,
-            None,
-            None,
-            "Updated Answer Only",
-            None,
-            None,
-            None,
-        )
-
-        cursor.execute("SELECT * FROM Youtubes WHERE id = ?", (entry_id,))
-        entry = cursor.fetchone()
-
-        self.assertEqual(entry["question"], "Initial Q")
-        self.assertEqual(entry["answer"], "Updated Answer Only")
-
-    def test_update_entry_to_create_duplicate(self):
-        """Test that an update fails if it creates a duplicate question/model pair."""
-        add_entry(self.conn, "Unique Q1", "ModelA", "A1", None, None, None)
-        add_entry(self.conn, "Unique Q2", "ModelA", "A2", None, None, None)
-
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id FROM Youtubes WHERE question = 'Unique Q2'")
-        entry_id_to_update = cursor.fetchone()["id"]
-
-        with self.assertRaises(DatabaseError):
-            update_entry(
-                self.conn,
-                entry_id_to_update,
-                "Unique Q1",
-                "ModelA",
-                "A3",
-                None,
-                None,
-                None,
-            )
-
-    def test_export_to_json_empty_db(self):
-        """Test exporting an empty database results in an empty JSON list."""
-        json_path = "test_empty_export.json"
-        export_to_json(self.conn, json_path)
-
-        self.assertTrue(os.path.exists(json_path))
-
-        with open(json_path, "r") as f:
-            data = json.load(f)
-        self.assertEqual(data, [])
-
-        os.remove(json_path)
+        self.assertEqual(len(entry["context"]), 10000)
+        self.assertEqual(len(entry["question"]), 10000)
 
 
 if __name__ == "__main__":

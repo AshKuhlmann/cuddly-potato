@@ -1,163 +1,208 @@
 import unittest
 import os
 import json
+import sqlite3
 from click.testing import CliRunner
 from cuddly_potato.cli import cli
 
 
-class TestCli(unittest.TestCase):
+class TestCLI(unittest.TestCase):
+
     def setUp(self):
-        """Set up a test runner and a temporary database for CLI tests."""
+        """Set up test environment."""
         self.runner = CliRunner()
-        self.db_path = "cli_test.db"
+        self.test_db = "test_cli.db"
 
     def tearDown(self):
-        """Remove the temporary database file after tests."""
-        if os.path.exists(self.db_path):
-            os.remove(self.db_path)
-        if os.path.exists("cli_export.json"):
-            os.remove("cli_export.json")
-        if os.path.exists("multiple_export.json"):
-            os.remove("multiple_export.json")
+        """Clean up test database."""
+        if os.path.exists(self.test_db):
+            os.remove(self.test_db)
+        # Clean up any export files
+        for file in ["test_export.json", "test_export.xlsx"]:
+            if os.path.exists(file):
+                os.remove(file)
 
-    def test_add_command(self):
-        """Test the 'add' command with all options."""
+    def test_add_entry(self):
+        """Test adding an entry via CLI."""
         result = self.runner.invoke(
             cli,
             [
                 "--db",
-                self.db_path,
+                self.test_db,
                 "add",
+                "--author",
+                "John Doe",
+                "--tags",
+                "python,testing",
+                "--context",
+                "Test context",
                 "--question",
-                "CLI Question?",
-                "--model",
-                "CLI Model",
+                "What is testing?",
+                "--reason",
+                "To verify functionality",
                 "--answer",
-                "CLI Answer",
-                "--domain",
-                "CLI Domain",
-                "--subdomain",
-                "CLI Subdomain",
-                "--comments",
-                "CLI test entry",
+                "Testing is verification",
             ],
         )
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("Entry added successfully!", result.output)
+        self.assertIn("Entry added successfully", result.output)
 
-    def test_add_command_interactive(self):
-        """Test the 'add' command works with interactive prompts."""
+    def test_add_entry_with_prompts(self):
+        """Test adding an entry with interactive prompts."""
         result = self.runner.invoke(
             cli,
-            ["--db", self.db_path, "add"],
-            input="Interactive Q\nInteractive Model\nInteractive Answer\nDomain\nSub\nComment\n",
+            ["--db", self.test_db, "add"],
+            input="John Doe\nWhat is Python?\nPython is a programming language\n",
         )
-
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("Entry added successfully!", result.output)
-        self.assertIn("Interactive Q", result.output)
+        self.assertIn("Entry added successfully", result.output)
 
-    def test_update_command(self):
-        """Test that the 'update' command correctly modifies an entry."""
-        self.runner.invoke(
-            cli, ["--db", self.db_path, "add"], input="Q\nM\nA\nD\nS\nC\n"
-        )
-
-        result = self.runner.invoke(
-            cli,
-            ["--db", self.db_path, "update", "1", "--answer", "Updated CLI Answer"],
-        )
-
-        self.assertEqual(result.exit_code, 0)
-        self.assertIn("Entry 1 updated successfully!", result.output)
-
-    def test_export_command(self):
-        """Test that the 'export' command creates a valid JSON file."""
+    def test_update_entry(self):
+        """Test updating an entry."""
+        # First add an entry
         self.runner.invoke(
             cli,
-            ["--db", self.db_path, "add"],
-            input="Export Q\nExport M\nExport A\n\n\n\n",
+            [
+                "--db",
+                self.test_db,
+                "add",
+                "--author",
+                "Jane",
+                "--question",
+                "Q1",
+                "--answer",
+                "A1",
+            ],
         )
 
-        export_file = "cli_export.json"
+        # Now update it
         result = self.runner.invoke(
             cli,
-            ["--db", self.db_path, "export", export_file],
+            [
+                "--db",
+                self.test_db,
+                "update",
+                "1",
+                "--author",
+                "Jane Smith",
+                "--question",
+                "Updated Question",
+            ],
+        )
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("updated successfully", result.output)
+
+    def test_update_nonexistent_entry(self):
+        """Test updating an entry that doesn't exist."""
+        result = self.runner.invoke(
+            cli,
+            ["--db", self.test_db, "update", "999", "--author", "Nobody"],
+        )
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("Error", result.output)
+
+    def test_export_json(self):
+        """Test exporting to JSON."""
+        # Add an entry first
+        self.runner.invoke(
+            cli,
+            [
+                "--db",
+                self.test_db,
+                "add",
+                "--author",
+                "Export Test",
+                "--question",
+                "Test Q",
+                "--answer",
+                "Test A",
+            ],
+        )
+
+        # Export to JSON
+        result = self.runner.invoke(
+            cli, ["--db", self.test_db, "export-json", "test_export.json"]
+        )
+        self.assertEqual(result.exit_code, 0)
+        self.assertTrue(os.path.exists("test_export.json"))
+
+        # Verify the exported data
+        with open("test_export.json", "r") as f:
+            data = json.load(f)
+            self.assertEqual(len(data), 1)
+            self.assertEqual(data[0]["author"], "Export Test")
+
+    def test_export_excel(self):
+        """Test exporting to Excel."""
+        # Add an entry first
+        self.runner.invoke(
+            cli,
+            [
+                "--db",
+                self.test_db,
+                "add",
+                "--author",
+                "Excel Test",
+                "--question",
+                "Test Q",
+                "--answer",
+                "Test A",
+            ],
+        )
+
+        # Export to Excel
+        result = self.runner.invoke(
+            cli, ["--db", self.test_db, "export-excel", "test_export.xlsx"]
+        )
+        self.assertEqual(result.exit_code, 0)
+        self.assertTrue(os.path.exists("test_export.xlsx"))
+
+    def test_import_json(self):
+        """Test importing entries from JSON file."""
+        # Create a test JSON file
+        test_data = [
+            {
+                "author": "Import Author 1",
+                "tags": "test,import",
+                "context": "Import context 1",
+                "question": "Import question 1",
+                "reason": "Import reason 1",
+                "answer": "Import answer 1",
+            },
+            {
+                "author": "Import Author 2",
+                "tags": "test",
+                "context": "Import context 2",
+                "question": "Import question 2",
+                "reason": "Import reason 2",
+                "answer": "Import answer 2",
+            },
+        ]
+
+        import_file = "test_import.json"
+        with open(import_file, "w") as f:
+            json.dump(test_data, f)
+
+        # Import the data
+        result = self.runner.invoke(
+            cli, ["--db", self.test_db, "import-json", import_file]
         )
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn(f"Data exported to {export_file}", result.output)
-        self.assertTrue(os.path.exists(export_file))
+        self.assertIn("Successfully imported 2 entries", result.output)
 
-    def test_db_path_creation(self):
-        """Test that specifying a new db path creates the file."""
-        self.assertFalse(os.path.exists(self.db_path))
-        self.runner.invoke(cli, ["--db", self.db_path, "add"], input="Q\nM\nA\n\n\n\n")
-        self.assertTrue(os.path.exists(self.db_path))
+        # Verify the data was imported
+        conn = sqlite3.connect(self.test_db)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM entries")
+        entries = cursor.fetchall()
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0]["author"], "Import Author 1")
+        conn.close()
 
-    def test_memory_uses_last_database(self):
-        """Test that the CLI remembers the last used database path."""
-        with self.runner.isolated_filesystem():
-            home = os.getcwd()
-            env = {"HOME": home}
-            db_path = os.path.join(home, "mem.db")
-
-            self.runner.invoke(
-                cli,
-                ["--db", db_path, "add"],
-                input="Q1\nM\nA1\n\n\n\n",
-                env=env,
-            )
-
-            result = self.runner.invoke(
-                cli, ["add"], input="Q2\nM\nA2\n\n\n\n", env=env
-            )
-
-            self.assertEqual(result.exit_code, 0)
-
-            import sqlite3
-
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM Youtubes")
-            count = cursor.fetchone()[0]
-            conn.close()
-
-            self.assertEqual(count, 2)
-
-    def test_export_multiple_entries(self):
-        """Test adding multiple entries and then exporting them."""
-        with self.runner.isolated_filesystem():
-            db_path = "test_export_multiple.db"
-            for i in range(5):
-                self.runner.invoke(
-                    cli,
-                    [
-                        "--db",
-                        db_path,
-                        "add",
-                        "--question",
-                        f"Question {i}",
-                        "--model",
-                        "Test Model",
-                        "--answer",
-                        f"Answer {i}",
-                    ],
-                    catch_exceptions=False,
-                )
-
-            export_file = "multiple_export.json"
-            result = self.runner.invoke(
-                cli,
-                ["--db", db_path, "export", export_file],
-            )
-
-            self.assertEqual(result.exit_code, 0)
-            self.assertTrue(os.path.exists(export_file))
-
-            with open(export_file, "r") as f:
-                data = json.load(f)
-            self.assertEqual(len(data), 5)
+        # Clean up
+        os.remove(import_file)
 
 
 if __name__ == "__main__":

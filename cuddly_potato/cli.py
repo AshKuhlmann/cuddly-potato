@@ -1,6 +1,7 @@
 import click
 import os
 import json
+import sys
 from rich.console import Console
 from .database import (
     get_db_connection,
@@ -8,11 +9,11 @@ from .database import (
     add_entry,
     update_entry,
     export_to_json,
+    export_to_excel,
     DatabaseError,
 )
 from .gui import launch_gui
 
-# --- Start of New Code ---
 # Define the path for the configuration file in the user's home directory
 CONFIG_DIR = os.path.expanduser("~/.cuddly-potato")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
@@ -37,8 +38,6 @@ def save_last_db_path(db_path):
         json.dump({"last_db_path": db_path}, f)
 
 
-# --- End of New Code ---
-
 # Create a console object for rich output
 console = Console()
 
@@ -46,12 +45,12 @@ console = Console()
 @click.group()
 @click.option(
     "--db",
-    default=None,  # Set default to None to handle memory logic
+    default=None,
     help="The path to the SQLite database file. Remembers the last used path.",
 )
 @click.pass_context
 def cli(ctx, db):
-    """A CLI tool to manage question-answer pairs for LLMs."""
+    """A CLI tool to manage data entries with author, tags, context, question, reason, and answer."""
     last_db_path = load_last_db_path()
 
     if db is None:
@@ -69,51 +68,84 @@ def cli(ctx, db):
         create_table(conn)
         conn.close()
     except DatabaseError as e:
-        console.print(f"[bold red]❌ Error: {e}[/bold red]")
+        console.print(f"[bold red]Error: {e}[/bold red]")
         ctx.exit(1)
 
 
 @cli.command()
+@click.option("--author", prompt=True, help="The author of the entry.")
+@click.option("--tags", default="", help="Comma-separated tags for the entry.")
+@click.option("--context", default="", help="Context for the question.")
 @click.option("--question", prompt=True, help="The question being asked.")
-@click.option("--model", prompt=True, help="The model providing the answer.")
-@click.option("--answer", prompt=True, help="The answer from the model.")
-@click.option("--domain", help="The domain of the question (e.g., Math).")
-@click.option("--subdomain", help="The subdomain of the question (e.g., Basic Math).")
-@click.option("--comments", help="Any comments or notes.")
+@click.option("--reason", default="", help="The reason for asking the question.")
+@click.option("--answer", prompt=True, help="The answer to the question.")
 @click.pass_context
-def add(ctx, question, model, answer, domain, subdomain, comments):
-    """Add a new question-answer entry."""
+def add(ctx, author, tags, context, question, reason, answer):
+    """Add a new entry."""
     conn = get_db_connection(ctx.obj["DB_PATH"])
     try:
-        add_entry(conn, question, model, answer, domain, subdomain, comments)
-        console.print("[bold green]✅ Entry added successfully![/bold green]")
+        add_entry(conn, author, tags, context, question, reason, answer)
+        console.print("[bold green]Entry added successfully![/bold green]")
     except DatabaseError as e:
-        console.print(f"[bold red]❌ Error: {e}[/bold red]")
+        console.print(f"[bold red]Error: {e}[/bold red]")
+    finally:
+        conn.close()
+
+
+@cli.command()
+@click.argument("input_file", type=click.File("r"))
+@click.pass_context
+def import_json(ctx, input_file):
+    """Import entries from a JSON file. Expected format: array of objects with author, tags, context, question, reason, answer fields."""
+    conn = get_db_connection(ctx.obj["DB_PATH"])
+    try:
+        data = json.load(input_file)
+        if not isinstance(data, list):
+            console.print("[bold red]Error: JSON file must contain an array of entries.[/bold red]")
+            return
+
+        count = 0
+        for entry in data:
+            try:
+                add_entry(
+                    conn,
+                    entry.get("author", ""),
+                    entry.get("tags", ""),
+                    entry.get("context", ""),
+                    entry.get("question", ""),
+                    entry.get("reason", ""),
+                    entry.get("answer", ""),
+                )
+                count += 1
+            except Exception as e:
+                console.print(f"[yellow]Warning: Skipped entry due to error: {e}[/yellow]")
+
+        console.print(f"[bold green]Successfully imported {count} entries![/bold green]")
+    except json.JSONDecodeError as e:
+        console.print(f"[bold red]Error: Invalid JSON format: {e}[/bold red]")
+    except DatabaseError as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
     finally:
         conn.close()
 
 
 @cli.command()
 @click.argument("entry_id", type=int)
+@click.option("--author", help="The new author.")
+@click.option("--tags", help="The new tags (comma-separated).")
+@click.option("--context", help="The new context.")
 @click.option("--question", help="The new question.")
-@click.option("--model", help="The new model name.")
+@click.option("--reason", help="The new reason.")
 @click.option("--answer", help="The new answer.")
-@click.option("--domain", help="The new domain.")
-@click.option("--subdomain", help="The new subdomain.")
-@click.option("--comments", help="The new comments.")
 @click.pass_context
-def update(ctx, entry_id, question, model, answer, domain, subdomain, comments):
+def update(ctx, entry_id, author, tags, context, question, reason, answer):
     """Update an existing entry by its ID."""
     conn = get_db_connection(ctx.obj["DB_PATH"])
     try:
-        update_entry(
-            conn, entry_id, question, model, answer, domain, subdomain, comments
-        )
-        console.print(
-            f"[bold green]✅ Entry {entry_id} updated successfully![/bold green]"
-        )
+        update_entry(conn, entry_id, author, tags, context, question, reason, answer)
+        console.print(f"[bold green]Entry {entry_id} updated successfully![/bold green]")
     except DatabaseError as e:
-        console.print(f"[bold red]❌ Error: {e}[/bold red]")
+        console.print(f"[bold red]Error: {e}[/bold red]")
     finally:
         conn.close()
 
@@ -121,14 +153,29 @@ def update(ctx, entry_id, question, model, answer, domain, subdomain, comments):
 @cli.command()
 @click.argument("output_path", type=click.Path())
 @click.pass_context
-def export(ctx, output_path):
+def export_json(ctx, output_path):
     """Export the database to a JSON file."""
     conn = get_db_connection(ctx.obj["DB_PATH"])
     try:
         export_to_json(conn, output_path)
-        console.print(f"[bold blue]📄 Data exported to {output_path}[/bold blue]")
+        console.print(f"[bold blue]Data exported to {output_path}[/bold blue]")
     except DatabaseError as e:
-        console.print(f"[bold red]❌ Error: {e}[/bold red]")
+        console.print(f"[bold red]Error: {e}[/bold red]")
+    finally:
+        conn.close()
+
+
+@cli.command()
+@click.argument("output_path", type=click.Path())
+@click.pass_context
+def export_excel(ctx, output_path):
+    """Export the database to an Excel file."""
+    conn = get_db_connection(ctx.obj["DB_PATH"])
+    try:
+        export_to_excel(conn, output_path)
+        console.print(f"[bold blue]Data exported to {output_path}[/bold blue]")
+    except DatabaseError as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
     finally:
         conn.close()
 
