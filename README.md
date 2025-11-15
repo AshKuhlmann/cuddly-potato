@@ -63,6 +63,8 @@ The CLI provides powerful commands for managing your data entries. A database fi
 
 All commands accept a global `--db` option to specify a different database file. If omitted, the tool remembers the last database you used.
 
+Use `--quiet` (or `-q`) to suppress human-friendly output while still emitting structured JSON logs that summarize each command's exit status — perfect for automation. Use `--verbose` (or `-v`) to surface those diagnostic logs alongside friendly console output so you can trace what the CLI is doing.
+
 #### Adding Entries
 
 **Interactive Mode** (prompts for required fields):

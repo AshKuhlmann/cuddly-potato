@@ -43,6 +43,18 @@ class TestCLI(unittest.TestCase):
         for patcher in getattr(self, "_patchers", []):
             patcher.stop()
 
+    def _structured_logs(self, output):
+        logs = []
+        for line in output.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                logs.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return logs
+
     def test_add_entry(self):
         """Test adding an entry via CLI."""
         result = self.runner.invoke(
@@ -295,6 +307,71 @@ class TestCLI(unittest.TestCase):
         self.assertIn("Author is required", result.output)
 
         os.remove(import_file)
+
+    def test_structured_logging_records_success(self):
+        """Structured logs include command result metadata on success."""
+        result = self.runner.invoke(
+            cli,
+            [
+                "--db",
+                self.test_db,
+                "--quiet",
+                "add",
+                "--author",
+                "Log Test",
+                "--question",
+                "Does logging work?",
+                "--answer",
+                "Yes",
+            ],
+        )
+        self.assertEqual(result.exit_code, 0)
+        logs = self._structured_logs(result.output)
+        self.assertTrue(logs, "Expected structured logs to be emitted.")
+        last_log = logs[-1]
+        self.assertEqual(last_log["event"], "command_result")
+        self.assertEqual(last_log["command"], "add")
+        self.assertEqual(last_log["status"], "success")
+        self.assertEqual(last_log["exit_code"], 0)
+
+    def test_structured_logging_records_failure(self):
+        """Structured logs record non-zero exits with reason metadata."""
+        result = self.runner.invoke(
+            cli,
+            ["--db", self.test_db, "--quiet", "update", "999", "--author", "Nobody"],
+        )
+        self.assertNotEqual(result.exit_code, 0)
+        logs = self._structured_logs(result.output)
+        self.assertTrue(logs, "Expected structured logs to be emitted.")
+        last_log = logs[-1]
+        self.assertEqual(last_log["event"], "command_result")
+        self.assertEqual(last_log["command"], "update")
+        self.assertEqual(last_log["status"], "error")
+        self.assertEqual(last_log["exit_code"], 1)
+        self.assertIn("Failed to update", last_log["message"])
+
+    def test_verbose_mode_emits_command_start_logs(self):
+        """Verbose flag surfaces command start events for troubleshooting."""
+        result = self.runner.invoke(
+            cli,
+            [
+                "--db",
+                self.test_db,
+                "--verbose",
+                "add",
+                "--author",
+                "Verbose",
+                "--question",
+                "Command start recorded?",
+                "--answer",
+                "Yes",
+            ],
+        )
+        self.assertEqual(result.exit_code, 0)
+        logs = self._structured_logs(result.output)
+        events = [log["event"] for log in logs]
+        self.assertIn("command_start", events)
+        self.assertIn("command_result", events)
 
 
 if __name__ == "__main__":
