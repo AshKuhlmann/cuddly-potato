@@ -108,7 +108,7 @@ def update_entry(conn, entry_id, author, tags, context, question, reason, answer
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM entries WHERE id = ?", (entry_id,))
         if cursor.fetchone() is None:
-            raise DatabaseError(f"No entry found with id {entry_id}.")
+            raise ValidationError(f"No entry found with id {entry_id}.")
 
         updates = []
         params = []

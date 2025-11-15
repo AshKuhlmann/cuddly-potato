@@ -7,7 +7,11 @@ import unittest
 from unittest import mock
 
 from click.testing import CliRunner
-from cuddly_potato.cli import cli
+from cuddly_potato.cli import (
+    EXIT_UNEXPECTED_ERROR,
+    EXIT_VALIDATION_ERROR,
+    cli,
+)
 from cuddly_potato.database import DatabaseError
 
 
@@ -106,7 +110,7 @@ class TestCLI(unittest.TestCase):
                 "Yes",
             ],
         )
-        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(result.exit_code, EXIT_VALIDATION_ERROR)
         self.assertIn("Author is required", result.output)
 
     def test_update_entry(self):
@@ -150,7 +154,7 @@ class TestCLI(unittest.TestCase):
             cli,
             ["--db", self.test_db, "update", "999", "--author", "Nobody"],
         )
-        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(result.exit_code, EXIT_VALIDATION_ERROR)
         self.assertIn("No entry found with id 999", result.output)
 
     def test_export_json(self):
@@ -265,7 +269,7 @@ class TestCLI(unittest.TestCase):
             result = self.runner.invoke(
                 cli, ["--db", self.test_db, "export-json", "out.json"]
             )
-        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(result.exit_code, EXIT_UNEXPECTED_ERROR)
         self.assertIn("disk full", result.output)
 
     def test_export_excel_failure_exits_nonzero(self):
@@ -277,7 +281,7 @@ class TestCLI(unittest.TestCase):
             result = self.runner.invoke(
                 cli, ["--db", self.test_db, "export-excel", "out.xlsx"]
             )
-        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(result.exit_code, EXIT_UNEXPECTED_ERROR)
         self.assertIn("permission denied", result.output)
 
     def test_import_json_reports_partial_failures(self):
@@ -302,7 +306,7 @@ class TestCLI(unittest.TestCase):
             cli, ["--db", self.test_db, "import-json", import_file]
         )
 
-        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(result.exit_code, EXIT_VALIDATION_ERROR)
         self.assertIn("Imported 1 of 2 entries", result.output)
         self.assertIn("Author is required", result.output)
 
@@ -340,15 +344,16 @@ class TestCLI(unittest.TestCase):
             cli,
             ["--db", self.test_db, "--quiet", "update", "999", "--author", "Nobody"],
         )
-        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(result.exit_code, EXIT_VALIDATION_ERROR)
         logs = self._structured_logs(result.output)
         self.assertTrue(logs, "Expected structured logs to be emitted.")
         last_log = logs[-1]
         self.assertEqual(last_log["event"], "command_result")
         self.assertEqual(last_log["command"], "update")
-        self.assertEqual(last_log["status"], "error")
-        self.assertEqual(last_log["exit_code"], 1)
-        self.assertIn("Failed to update", last_log["message"])
+        self.assertEqual(last_log["status"], "validation_error")
+        self.assertEqual(last_log["exit_code"], EXIT_VALIDATION_ERROR)
+        self.assertIn("Validation failed", last_log["message"])
+        self.assertIn("entry 999", last_log["message"])
 
     def test_verbose_mode_emits_command_start_logs(self):
         """Verbose flag surfaces command start events for troubleshooting."""

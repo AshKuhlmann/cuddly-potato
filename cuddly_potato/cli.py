@@ -42,6 +42,10 @@ def save_last_db_path(db_path):
 # Create a console object for rich output
 console = Console()
 
+EXIT_SUCCESS = 0
+EXIT_VALIDATION_ERROR = 2
+EXIT_UNEXPECTED_ERROR = 3
+
 LEVEL_TO_INT = {"debug": 10, "info": 20, "warning": 30, "error": 40}
 VERBOSITY_THRESHOLDS = {"quiet": 30, "normal": 20, "verbose": 10}
 
@@ -75,7 +79,9 @@ def _log_command_success(ctx, message=None, **fields):
         )
 
 
-def _log_command_failure(ctx, message=None, exit_code=1, status="error", **fields):
+def _log_command_failure(
+    ctx, message=None, exit_code=EXIT_UNEXPECTED_ERROR, status="error", **fields
+):
     logger = ctx.obj.get("logger")
     if logger:
         logger.command_result(
@@ -85,6 +91,11 @@ def _log_command_failure(ctx, message=None, exit_code=1, status="error", **field
             message=message,
             **fields,
         )
+
+
+def _fail_and_exit(ctx, log_message, exit_code, status="error", **fields):
+    _log_command_failure(ctx, log_message, exit_code=exit_code, status=status, **fields)
+    ctx.exit(exit_code)
 
 
 @click.group()
@@ -135,13 +146,13 @@ def cli(ctx, db, quiet, verbose):
         conn.close()
     except DatabaseError as e:
         _print_message(ctx, f"[bold red]Error: {e}[/bold red]", level="error")
-        logger.log(
-            "error",
-            "bootstrap_failed",
+        _fail_and_exit(
+            ctx,
             f"Failed to initialize database: {e}",
+            exit_code=EXIT_UNEXPECTED_ERROR,
+            status="bootstrap_failed",
             db_path=db_path,
         )
-        ctx.exit(1)
 
 
 @cli.command()
@@ -162,21 +173,19 @@ def add(ctx, author, tags, context, question, reason, answer):
         _log_command_success(ctx, "Entry added successfully.")
     except ValidationError as e:
         _print_message(ctx, f"[bold red]Error: {e}[/bold red]", level="error")
-        _log_command_failure(
+        _fail_and_exit(
             ctx,
             f"Validation failed: {e}",
-            exit_code=1,
+            exit_code=EXIT_VALIDATION_ERROR,
             status="validation_error",
         )
-        ctx.exit(1)
     except DatabaseError as e:
         _print_message(ctx, f"[bold red]Error: {e}[/bold red]", level="error")
-        _log_command_failure(
+        _fail_and_exit(
             ctx,
             f"Database error while adding entry: {e}",
-            exit_code=1,
+            exit_code=EXIT_UNEXPECTED_ERROR,
         )
-        ctx.exit(1)
     finally:
         conn.close()
 
@@ -190,14 +199,17 @@ def import_json(ctx, input_file):
     try:
         data = json.load(input_file)
     except json.JSONDecodeError as e:
-        _print_message(ctx, f"[bold red]Error: Invalid JSON format: {e}[/bold red]", level="error")
-        _log_command_failure(
+        _print_message(
+            ctx,
+            f"[bold red]Error: Invalid JSON format: {e}[/bold red]",
+            level="error",
+        )
+        _fail_and_exit(
             ctx,
             f"Invalid JSON payload: {e}",
-            exit_code=1,
+            exit_code=EXIT_VALIDATION_ERROR,
             status="invalid_json",
         )
-        ctx.exit(1)
 
     if not isinstance(data, list):
         _print_message(
@@ -205,16 +217,17 @@ def import_json(ctx, input_file):
             "[bold red]Error: JSON file must contain an array of entries.[/bold red]",
             level="error",
         )
-        _log_command_failure(
+        _fail_and_exit(
             ctx,
             "JSON import payload was not a list.",
-            exit_code=1,
+            exit_code=EXIT_VALIDATION_ERROR,
             status="invalid_json",
         )
-        ctx.exit(1)
 
     conn = get_db_connection(ctx.obj["DB_PATH"])
     skipped_entries = []
+    validation_failures = 0
+    unexpected_failures = 0
     success_count = 0
     total_entries = len(data)
 
@@ -236,11 +249,14 @@ def import_json(ctx, input_file):
                 )
                 success_count += 1
             except ValidationError as e:
-                skipped_entries.append((index, str(e)))
+                skipped_entries.append((index, "validation", str(e)))
+                validation_failures += 1
             except DatabaseError as e:
-                skipped_entries.append((index, str(e)))
+                skipped_entries.append((index, "unexpected", str(e)))
+                unexpected_failures += 1
             except Exception as e:  # pragma: no cover - defensive guard
-                skipped_entries.append((index, f"Unexpected error: {e}"))
+                skipped_entries.append((index, "unexpected", f"Unexpected error: {e}"))
+                unexpected_failures += 1
 
         if total_entries == 0:
             _print_message(
@@ -269,32 +285,32 @@ def import_json(ctx, input_file):
             )
             return
 
-        if success_count == 0:
-            _print_message(
-                ctx,
-                "[bold red]Failed to import any entries.[/bold red]",
-                level="error",
-            )
-        else:
-            _print_message(
-                ctx,
-                f"[bold yellow]Imported {success_count} of {total_entries} entries.[/bold yellow]",
-                level="warning",
-            )
+        failure_level = "error" if success_count == 0 else "warning"
+        summary_message = (
+            "[bold red]Failed to import any entries.[/bold red]"
+            if success_count == 0
+            else f"[bold yellow]Imported {success_count} of {total_entries} entries.[/bold yellow]"
+        )
+        _print_message(ctx, summary_message, level=failure_level)
 
         if skipped_entries:
             _print_message(ctx, "[bold yellow]Skipped entries:[/bold yellow]", level="warning")
-            for entry_no, reason in skipped_entries:
+            for entry_no, _kind, reason in skipped_entries:
                 _print_message(ctx, f"[yellow]- Entry #{entry_no}: {reason}[/yellow]", level="warning")
-        _log_command_failure(
+        exit_code = (
+            EXIT_UNEXPECTED_ERROR if unexpected_failures else EXIT_VALIDATION_ERROR
+        )
+        status = "partial_import" if success_count else "import_failed"
+        _fail_and_exit(
             ctx,
             f"Imported {success_count} of {total_entries} entries.",
-            exit_code=1,
-            status="partial_import" if success_count else "import_failed",
+            exit_code=exit_code,
+            status=status,
             imported=success_count,
             skipped=len(skipped_entries),
+            validation_errors=validation_failures,
+            unexpected_errors=unexpected_failures,
         )
-        ctx.exit(1)
     finally:
         conn.close()
 
@@ -319,15 +335,23 @@ def update(ctx, entry_id, author, tags, context, question, reason, answer):
             f"[bold green]Entry {entry_id} updated successfully![/bold green]",
         )
         _log_command_success(ctx, f"Entry {entry_id} updated.", entry_id=entry_id)
-    except DatabaseError as e:
+    except ValidationError as e:
         _print_message(ctx, f"[bold red]Error: {e}[/bold red]", level="error")
-        _log_command_failure(
+        _fail_and_exit(
             ctx,
-            f"Failed to update entry {entry_id}: {e}",
-            exit_code=1,
+            f"Validation failed for entry {entry_id}: {e}",
+            exit_code=EXIT_VALIDATION_ERROR,
+            status="validation_error",
             entry_id=entry_id,
         )
-        ctx.exit(1)
+    except DatabaseError as e:
+        _print_message(ctx, f"[bold red]Error: {e}[/bold red]", level="error")
+        _fail_and_exit(
+            ctx,
+            f"Failed to update entry {entry_id}: {e}",
+            exit_code=EXIT_UNEXPECTED_ERROR,
+            entry_id=entry_id,
+        )
     finally:
         conn.close()
 
@@ -352,13 +376,12 @@ def export_json(ctx, output_path):
         )
     except DatabaseError as e:
         _print_message(ctx, f"[bold red]Error: {e}[/bold red]", level="error")
-        _log_command_failure(
+        _fail_and_exit(
             ctx,
             f"Failed to export JSON to {output_path}: {e}",
-            exit_code=1,
+            exit_code=EXIT_UNEXPECTED_ERROR,
             output_path=output_path,
         )
-        ctx.exit(1)
     finally:
         conn.close()
 
@@ -383,13 +406,12 @@ def export_excel(ctx, output_path):
         )
     except DatabaseError as e:
         _print_message(ctx, f"[bold red]Error: {e}[/bold red]", level="error")
-        _log_command_failure(
+        _fail_and_exit(
             ctx,
             f"Failed to export Excel to {output_path}: {e}",
-            exit_code=1,
+            exit_code=EXIT_UNEXPECTED_ERROR,
             output_path=output_path,
         )
-        ctx.exit(1)
     finally:
         conn.close()
 
@@ -404,12 +426,11 @@ def gui(ctx):
         _log_command_success(ctx, "GUI launched.")
     except Exception as e:  # pragma: no cover - GUI errors aren't covered by CLI tests
         _print_message(ctx, f"[bold red]Error launching GUI: {e}[/bold red]", level="error")
-        _log_command_failure(
+        _fail_and_exit(
             ctx,
             f"GUI launch failed: {e}",
-            exit_code=1,
+            exit_code=EXIT_UNEXPECTED_ERROR,
         )
-        ctx.exit(1)
 
 
 if __name__ == "__main__":

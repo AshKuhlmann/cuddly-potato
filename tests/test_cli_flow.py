@@ -4,7 +4,11 @@ from pathlib import Path
 from click.testing import Result
 
 from cuddly_potato import cli as cli_module
-from cuddly_potato.cli import cli
+from cuddly_potato.cli import (
+    EXIT_UNEXPECTED_ERROR,
+    EXIT_VALIDATION_ERROR,
+    cli,
+)
 from cuddly_potato import database as database_module
 
 
@@ -152,7 +156,7 @@ def test_cli_import_invalid_json(cli_isolated):
     result = runner.invoke(
         cli, ["--db", str(db_path), "import-json", str(bad_path)]
     )
-    assert result.exit_code != 0
+    assert result.exit_code == EXIT_VALIDATION_ERROR
     assert "Invalid JSON format" in result.output
 
 
@@ -165,7 +169,7 @@ def test_cli_import_non_list_payload(cli_isolated):
     result = runner.invoke(
         cli, ["--db", str(db_path), "import-json", str(payload_path)]
     )
-    assert result.exit_code != 0
+    assert result.exit_code == EXIT_VALIDATION_ERROR
     assert "must contain an array" in result.output
 
 
@@ -204,7 +208,7 @@ def test_cli_import_warns_and_continues_on_failure(cli_isolated, monkeypatch):
     result = runner.invoke(
         cli, ["--db", str(db_path), "import-json", str(payload_path)]
     )
-    assert result.exit_code != 0
+    assert result.exit_code == EXIT_UNEXPECTED_ERROR
     assert "Imported 1 of 2 entries" in result.output
     assert "Skipped entries" in result.output
 
@@ -220,5 +224,5 @@ def test_cli_update_nonexistent_entry(cli_isolated):
     result = runner.invoke(
         cli, ["--db", str(db_path), "update", "999", "--author", "Nobody"]
     )
-    assert result.exit_code != 0
+    assert result.exit_code == EXIT_VALIDATION_ERROR
     assert "No entry found with id 999" in result.output

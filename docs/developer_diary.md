@@ -1,0 +1,46 @@
+# Developer Diary
+
+Use this checklist to track upcoming improvements:
+
+- [ ] Warn when a CLI entry is missing an author, and require question/answer fields to be populated before accepting the command.
+- [ ] Make the “remember last database” feature project-scoped (store relative paths or otherwise tie the remembered DB to the current project).
+- [ ] Align CLI and GUI functionality so they stay linked/bundled together (shared validation, consistent features, and discoverable entry points).
+- [ ] Normalize/validate database paths before persisting them so “remembered” paths are portable and predictable.
+- [x] Ensure every CLI command exits non-zero on failures and surfaces meaningful error messages/logging.
+- [ ] Add import-time validation so author/question/answer are required, and reject malformed JSON entries instead of inserting blank values.
+- [ ] Make `import-json` report partial failures (warnings + non-zero exit) when entries are skipped or all entries fail.
+- [ ] Defer GUI imports so CLI usage does not pull in `customtkinter` on headless environments.
+- [ ] Guarantee GUI database connections close via context managers or `finally` blocks even when validation fails.
+- [ ] Clarify/implement behavior for clearing required fields in `update_entry` (decide whether empty strings should be allowed or explicitly rejected).
+- [ ] Hook GUI author/tag auto-fill up to the actual last entry instead of relying on stale widget values.
+- [ ] Centralize data validation/normalization in the database layer (trim strings, ensure timestamps/timezones, etc.).
+- [ ] Expand CLI feature set with `list`, `show`, `search`, and `delete` commands plus filtering/pagination.
+- [ ] Introduce a dataclass/Pydantic model for entries to avoid ad-hoc tuples and to share validation between interfaces.
+- [ ] Support CSV/filtered exports and transactional streaming imports for large files.
+- [ ] Enhance GUI with table views/search/edit/delete capabilities and responsive status indicators for long operations.
+- [ ] Maintain a history of recently used databases to make context switching easier.
+- [ ] Simplify packaging (drop redundant `setup.py`, pin dependency ranges, and move GUI deps into an optional extra if needed).
+- [ ] Add structured logging plus `--verbose/--quiet` CLI flags for scriptable output.
+- [ ] Add GUI-focused tests by extracting testable helpers so Tk-dependent code paths gain coverage.
+- [ ] Require absolute paths (or explicit per-project mappings) when storing remembered database locations to avoid referencing the wrong file.
+- [x] Ensure CLI commands return unique exit codes for validation errors vs. unexpected exceptions to improve automation.
+- [ ] Validate JSON imports for schema compliance and surface actionable error messages referencing the offending entry.
+- [ ] Include success/failure summaries after imports that list skipped entries and reasons.
+- [ ] Allow `update_entry` to explicitly clear fields (with validation) rather than silently ignoring empty values.
+- [ ] Move GUI/CLI configuration logic into a shared module so both interfaces keep settings in sync.
+- [ ] Store timestamps in UTC (or add timezone indicators) to make cross-device data comparable.
+- [ ] Implement filtering/pagination for export commands to avoid loading every row into memory.
+- [ ] Add CLI subcommands for listing/searching/deleting entries with tag/author/date filters.
+- [ ] Provide undo/snapshot/backup support so users can revert accidental edits.
+- [ ] Normalize tags and offer autocomplete or canonical casing to improve searchability.
+- [ ] Implement full-text search (or LIKE queries) so users can quickly locate entries from CLI/GUI.
+- [ ] Enable WAL mode / concurrency-safe transactions so CLI and GUI can access the database simultaneously.
+- [ ] Provide plugin hooks or automation triggers that run scripts after insert/update events.
+- [ ] Document data privacy considerations and explore optional encryption/password protection.
+- [ ] Publish stats/analytics commands (counts by tag/author/time) to give users insights into stored data.
+- [ ] Expand test coverage with fuzzed imports and concurrency scenarios.
+- [ ] Supply contribution templates, a CONTRIBUTING guide, and a changelog/release checklist.
+- [ ] Publish to PyPI with extras (`pip install cuddly-potato[gui]`) to separate headless vs. GUI installs.
+- [ ] Integrate Black/Ruff/mypy into pre-commit hooks and document local usage.
+- [ ] Offer a Docker/devcontainer setup for consistent cross-platform development.
+- [ ] Provide sample automation scripts in `utils/` demonstrating multi-step user stories/end-to-end flows.

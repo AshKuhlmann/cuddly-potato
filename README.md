@@ -65,6 +65,8 @@ All commands accept a global `--db` option to specify a different database file.
 
 Use `--quiet` (or `-q`) to suppress human-friendly output while still emitting structured JSON logs that summarize each command's exit status — perfect for automation. Use `--verbose` (or `-v`) to surface those diagnostic logs alongside friendly console output so you can trace what the CLI is doing.
 
+Exit codes stay consistent across commands so scripts can branch predictably: `0` for success, `2` for validation/config errors (bad input, invalid JSON, missing rows), and `3` for unexpected problems (I/O, database, or other runtime failures).
+
 #### Adding Entries
 
 **Interactive Mode** (prompts for required fields):
@@ -192,6 +194,18 @@ Or with coverage:
 pytest --cov=cuddly_potato
 ```
 
+See [TESTING.md](TESTING.md) for detailed guidance on how the suite is organized, how to write new tests, and how to keep coverage high while debugging.
+
+### Continuous Integration
+
+All pushes and pull requests to `main` run the workflow in `.github/workflows/ci.yml`. It:
+- installs the package plus dev tooling,
+- runs `python -m pytest --cov=cuddly_potato --cov-report=term-missing`,
+- lints with `ruff check cuddly_potato tests`, and
+- type-checks with `mypy cuddly_potato`.
+
+Keep local runs aligned with those commands before opening a PR to avoid CI surprises.
+
 ### Code Quality
 
 Format code with Black:
@@ -220,9 +234,13 @@ cuddly-potato/
 │   └── gui.py          # GUI application
 ├── tests/
 │   ├── __init__.py
-│   ├── test_cli.py     # CLI tests
-│   └── test_database.py # Database tests
+│   ├── test_cli.py                 # Legacy CLI regression tests (unittest)
+│   ├── test_cli_flow.py            # Pytest CLI integration & edge cases
+│   ├── test_config_persistence.py  # Shared config + GUI helpers
+│   ├── test_database.py            # Database unit tests
+│   └── test_database_extended.py   # Additional DB error-path tests
 ├── pyproject.toml      # Project dependencies and config
+├── TESTING.md          # Testing strategy & maintenance guide
 └── README.md
 ```
 

@@ -155,7 +155,7 @@ class TestDatabase(unittest.TestCase):
 
     def test_update_nonexistent_entry(self):
         """Test updating an entry that does not exist."""
-        with self.assertRaises(DatabaseError):
+        with self.assertRaises(ValidationError):
             update_entry(
                 self.conn, 999, "New Author", None, None, None, None, None
             )
