@@ -220,5 +220,5 @@ def test_cli_update_nonexistent_entry(cli_isolated):
     result = runner.invoke(
         cli, ["--db", str(db_path), "update", "999", "--author", "Nobody"]
     )
-    _assert_success(result, "update missing row")
+    assert result.exit_code != 0
     assert "No entry found with id 999" in result.output

@@ -180,6 +180,7 @@ def update(ctx, entry_id, author, tags, context, question, reason, answer):
         console.print(f"[bold green]Entry {entry_id} updated successfully![/bold green]")
     except DatabaseError as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
+        ctx.exit(1)
     finally:
         conn.close()
 
@@ -195,6 +196,7 @@ def export_json(ctx, output_path):
         console.print(f"[bold blue]Data exported to {output_path}[/bold blue]")
     except DatabaseError as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
+        ctx.exit(1)
     finally:
         conn.close()
 
@@ -210,6 +212,7 @@ def export_excel(ctx, output_path):
         console.print(f"[bold blue]Data exported to {output_path}[/bold blue]")
     except DatabaseError as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
+        ctx.exit(1)
     finally:
         conn.close()
 

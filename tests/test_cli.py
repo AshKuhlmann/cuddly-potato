@@ -8,6 +8,7 @@ from unittest import mock
 
 from click.testing import CliRunner
 from cuddly_potato.cli import cli
+from cuddly_potato.database import DatabaseError
 
 
 class TestCLI(unittest.TestCase):
@@ -137,8 +138,8 @@ class TestCLI(unittest.TestCase):
             cli,
             ["--db", self.test_db, "update", "999", "--author", "Nobody"],
         )
-        self.assertEqual(result.exit_code, 0)
-        self.assertIn("Error", result.output)
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("No entry found with id 999", result.output)
 
     def test_export_json(self):
         """Test exporting to JSON."""
@@ -242,6 +243,30 @@ class TestCLI(unittest.TestCase):
 
         # Clean up
         os.remove(import_file)
+
+    def test_export_json_failure_exits_nonzero(self):
+        """Ensure export-json surfaces errors via exit codes."""
+        with mock.patch(
+            "cuddly_potato.cli.export_to_json",
+            side_effect=DatabaseError("disk full"),
+        ):
+            result = self.runner.invoke(
+                cli, ["--db", self.test_db, "export-json", "out.json"]
+            )
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("disk full", result.output)
+
+    def test_export_excel_failure_exits_nonzero(self):
+        """Ensure export-excel surfaces errors via exit codes."""
+        with mock.patch(
+            "cuddly_potato.cli.export_to_excel",
+            side_effect=DatabaseError("permission denied"),
+        ):
+            result = self.runner.invoke(
+                cli, ["--db", self.test_db, "export-excel", "out.xlsx"]
+            )
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("permission denied", result.output)
 
     def test_import_json_reports_partial_failures(self):
         """Ensure import-json warns and exits non-zero when rows are skipped."""
