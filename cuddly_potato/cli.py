@@ -11,6 +11,7 @@ from .database import (
     export_to_json,
     export_to_excel,
     DatabaseError,
+    ValidationError,
 )
 from .gui import launch_gui
 
@@ -86,8 +87,12 @@ def add(ctx, author, tags, context, question, reason, answer):
     try:
         add_entry(conn, author, tags, context, question, reason, answer)
         console.print("[bold green]Entry added successfully![/bold green]")
+    except ValidationError as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
+        ctx.exit(1)
     except DatabaseError as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
+        ctx.exit(1)
     finally:
         conn.close()
 
@@ -97,34 +102,63 @@ def add(ctx, author, tags, context, question, reason, answer):
 @click.pass_context
 def import_json(ctx, input_file):
     """Import entries from a JSON file. Expected format: array of objects with author, tags, context, question, reason, answer fields."""
-    conn = get_db_connection(ctx.obj["DB_PATH"])
     try:
         data = json.load(input_file)
-        if not isinstance(data, list):
-            console.print("[bold red]Error: JSON file must contain an array of entries.[/bold red]")
-            return
+    except json.JSONDecodeError as e:
+        console.print(f"[bold red]Error: Invalid JSON format: {e}[/bold red]")
+        ctx.exit(1)
 
-        count = 0
-        for entry in data:
+    if not isinstance(data, list):
+        console.print("[bold red]Error: JSON file must contain an array of entries.[/bold red]")
+        ctx.exit(1)
+
+    conn = get_db_connection(ctx.obj["DB_PATH"])
+    skipped_entries = []
+    success_count = 0
+    total_entries = len(data)
+
+    try:
+        for index, entry in enumerate(data, start=1):
+            if not isinstance(entry, dict):
+                skipped_entries.append((index, "Entry must be a JSON object."))
+                continue
+
             try:
                 add_entry(
                     conn,
-                    entry.get("author", ""),
+                    entry.get("author"),
                     entry.get("tags", ""),
                     entry.get("context", ""),
-                    entry.get("question", ""),
+                    entry.get("question"),
                     entry.get("reason", ""),
-                    entry.get("answer", ""),
+                    entry.get("answer"),
                 )
-                count += 1
-            except Exception as e:
-                console.print(f"[yellow]Warning: Skipped entry due to error: {e}[/yellow]")
+                success_count += 1
+            except ValidationError as e:
+                skipped_entries.append((index, str(e)))
+            except DatabaseError as e:
+                skipped_entries.append((index, str(e)))
+            except Exception as e:  # pragma: no cover - defensive guard
+                skipped_entries.append((index, f"Unexpected error: {e}"))
 
-        console.print(f"[bold green]Successfully imported {count} entries![/bold green]")
-    except json.JSONDecodeError as e:
-        console.print(f"[bold red]Error: Invalid JSON format: {e}[/bold red]")
-    except DatabaseError as e:
-        console.print(f"[bold red]Error: {e}[/bold red]")
+        if total_entries == 0:
+            console.print("[bold yellow]Warning: No entries found in JSON file.[/bold yellow]")
+            return
+
+        if success_count == total_entries:
+            console.print(f"[bold green]Imported {success_count} entries.[/bold green]")
+            return
+
+        if success_count == 0:
+            console.print("[bold red]Failed to import any entries.[/bold red]")
+        else:
+            console.print(f"[bold yellow]Imported {success_count} of {total_entries} entries.[/bold yellow]")
+
+        if skipped_entries:
+            console.print("[bold yellow]Skipped entries:[/bold yellow]")
+            for entry_no, reason in skipped_entries:
+                console.print(f"[yellow]- Entry #{entry_no}: {reason}[/yellow]")
+        ctx.exit(1)
     finally:
         conn.close()
 

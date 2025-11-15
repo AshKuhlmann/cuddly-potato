@@ -1,7 +1,11 @@
-import unittest
-import os
 import json
+import os
+import shutil
 import sqlite3
+import tempfile
+import unittest
+from unittest import mock
+
 from click.testing import CliRunner
 from cuddly_potato.cli import cli
 
@@ -12,15 +16,31 @@ class TestCLI(unittest.TestCase):
         """Set up test environment."""
         self.runner = CliRunner()
         self.test_db = "test_cli.db"
+        self.config_dir = tempfile.mkdtemp()
+        self.config_file = os.path.join(self.config_dir, "config.json")
+        self._patchers = [
+            mock.patch("cuddly_potato.cli.CONFIG_DIR", self.config_dir),
+            mock.patch("cuddly_potato.cli.CONFIG_FILE", self.config_file),
+            mock.patch("cuddly_potato.gui.CONFIG_DIR", self.config_dir),
+            mock.patch("cuddly_potato.gui.CONFIG_FILE", self.config_file),
+        ]
+        for patcher in self._patchers:
+            patcher.start()
 
     def tearDown(self):
         """Clean up test database."""
+        self._stop_patches()
         if os.path.exists(self.test_db):
             os.remove(self.test_db)
         # Clean up any export files
         for file in ["test_export.json", "test_export.xlsx"]:
             if os.path.exists(file):
                 os.remove(file)
+        shutil.rmtree(self.config_dir, ignore_errors=True)
+
+    def _stop_patches(self):
+        for patcher in getattr(self, "_patchers", []):
+            patcher.stop()
 
     def test_add_entry(self):
         """Test adding an entry via CLI."""
@@ -56,6 +76,25 @@ class TestCLI(unittest.TestCase):
         )
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Entry added successfully", result.output)
+
+    def test_add_entry_missing_author_fails(self):
+        """Ensure CLI rejects entries without an author."""
+        result = self.runner.invoke(
+            cli,
+            [
+                "--db",
+                self.test_db,
+                "add",
+                "--author",
+                "",
+                "--question",
+                "Is validation enforced?",
+                "--answer",
+                "Yes",
+            ],
+        )
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Author is required", result.output)
 
     def test_update_entry(self):
         """Test updating an entry."""
@@ -189,7 +228,7 @@ class TestCLI(unittest.TestCase):
         )
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("Successfully imported 2 entries", result.output)
+        self.assertIn("Imported 2 entries", result.output)
 
         # Verify the data was imported
         conn = sqlite3.connect(self.test_db)
@@ -202,6 +241,34 @@ class TestCLI(unittest.TestCase):
         conn.close()
 
         # Clean up
+        os.remove(import_file)
+
+    def test_import_json_reports_partial_failures(self):
+        """Ensure import-json warns and exits non-zero when rows are skipped."""
+        test_data = [
+            {
+                "author": "",
+                "question": "Missing author should fail",
+                "answer": "Nope",
+            },
+            {
+                "author": "Valid",
+                "question": "Will import succeed?",
+                "answer": "Yes",
+            },
+        ]
+        import_file = "test_partial_import.json"
+        with open(import_file, "w") as f:
+            json.dump(test_data, f)
+
+        result = self.runner.invoke(
+            cli, ["--db", self.test_db, "import-json", import_file]
+        )
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Imported 1 of 2 entries", result.output)
+        self.assertIn("Author is required", result.output)
+
         os.remove(import_file)
 
 

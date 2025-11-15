@@ -10,6 +10,7 @@ from cuddly_potato.database import (
     export_to_excel,
     get_last_entry,
     DatabaseError,
+    ValidationError,
 )
 
 
@@ -73,6 +74,19 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(entry["tags"], "")
         self.assertEqual(entry["context"], "")
         self.assertEqual(entry["reason"], "")
+
+    def test_add_entry_missing_required_field_raises(self):
+        """Ensure required fields are validated."""
+        with self.assertRaises(ValidationError):
+            add_entry(
+                self.conn,
+                "",
+                "",
+                "",
+                "Question present",
+                "",
+                "Answer present",
+            )
 
     def test_get_last_entry(self):
         """Test retrieving the last entry."""

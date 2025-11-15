@@ -10,6 +10,12 @@ class DatabaseError(Exception):
     pass
 
 
+class ValidationError(DatabaseError):
+    """Raised when entry data fails validation."""
+
+    pass
+
+
 def get_db_connection(db_path="cuddly_potato.db"):
     """Establishes a connection to the SQLite database."""
     try:
@@ -42,8 +48,26 @@ def create_table(conn):
         raise DatabaseError(f"Failed to create table: {e}")
 
 
+def _ensure_required_fields(author, question, answer):
+    """Validate required entry fields."""
+    required_fields = {
+        "Author": author,
+        "Question": question,
+        "Answer": answer,
+    }
+    for label, value in required_fields.items():
+        if value is None:
+            raise ValidationError(f"{label} is required.")
+        if not isinstance(value, str):
+            raise ValidationError(f"{label} must be a string.")
+        if not value.strip():
+            raise ValidationError(f"{label} is required.")
+
+
 def add_entry(conn, author, tags, context, question, reason, answer):
     """Adds a new entry to the database."""
+    _ensure_required_fields(author, question, answer)
+
     with conn:
         try:
             conn.execute(
