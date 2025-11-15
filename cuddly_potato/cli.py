@@ -234,7 +234,10 @@ def import_json(ctx, input_file):
     try:
         for index, entry in enumerate(data, start=1):
             if not isinstance(entry, dict):
-                skipped_entries.append((index, "Entry must be a JSON object."))
+                skipped_entries.append(
+                    (index, "validation", "Entry must be a JSON object.")
+                )
+                validation_failures += 1
                 continue
 
             try:
