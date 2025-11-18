@@ -1,299 +1,85 @@
 # Cuddly Potato
 
-Cuddly Potato is a comprehensive data logging tool with both CLI and GUI interfaces for storing, managing, and exporting structured data entries. It uses an SQLite database to keep your data organized and supports exporting to both JSON and Excel formats.
+Cuddly Potato is a local Flask-based helper that lets you upload a PDF, slice it into one-page nuggets, annotate each page with structured entries, and keep everything resumed safely inside a beautiful dark UI. You can connect over the LAN or stay on the host machine—the app keeps the history in SQLite so you can pick up anywhere.
 
 ## Features
 
-- **Dual Interface**: Use either the command-line interface (CLI) or the graphical user interface (GUI)
-- **Rich Data Schema**: Store entries with author, tags, context, question, reason, and answer fields
-- **Auto-fill in GUI**: Author and tags are automatically retained from the last entry for faster data entry
-- **Multiple Export Formats**: Export your data to JSON or Excel (`.xlsx`) files
-- **Database Management**: Automatically remembers your last used database
-- **Batch Import**: Import multiple entries from JSON files via CLI
-- **Long Text Support**: All text fields support long content with proper formatting preservation
-- **Unique IDs**: Each entry gets a unique auto-incrementing ID
-- **Well-Tested**: Comprehensive test suite ensures reliability
+- Upload any PDF and have the server write `data/uploads/<uuid>.pdf` plus page splits under `data/split_pages/<uuid>/page_###.pdf`.
+- Track per-page metadata (author, tags, user input, output, complete/ignored/skipped flags) and log each entry for auditing; general entries live in their own table.
+- Dark SPA with document selection, progress bar, skip markers, preview toggle, clipboard export, general mode, and entry snapshot controls.
+- Delete a document when you’re done with the built-in ✕ control; it confirms before purging splits/metadata.
+- Explicit download and preview actions mean nothing auto-downloads unless you ask for it.
 
-## Data Schema
-
-Each entry contains the following fields:
-
-- **ID**: Auto-generated unique identifier
-- **Author**: The author of the entry (required)
-- **Tags**: Comma-separated tags for categorization (optional)
-- **Context**: Background information or context (optional)
-- **Question**: The main question being asked (required)
-- **Reason**: The reason for asking the question (optional)
-- **Answer**: The answer to the question (required)
-- **Date**: Automatically recorded timestamp
-
-## Installation
-
-### Prerequisites
-
-- Python 3.10 or higher
-- Poetry (for dependency management)
-
-### Install Steps
-
-1. **Clone the repository:**
-
-   ```bash
-   git clone https://github.com/your-username/cuddly-potato.git
-   cd cuddly-potato
-   ```
-
-2. **Install dependencies with Poetry:**
-
-   ```bash
-   poetry install
-   ```
-
-3. **Activate the virtual environment:**
-
-   ```bash
-   poetry shell
-   ```
-
-## Usage
-
-### Command Line Interface (CLI)
-
-The CLI provides powerful commands for managing your data entries. A database file named `cuddly_potato.db` will be automatically created in your current directory upon first use.
-
-All commands accept a global `--db` option to specify a different database file. If omitted, the tool remembers the last database you used.
-
-Use `--quiet` (or `-q`) to suppress human-friendly output while still emitting structured JSON logs that summarize each command's exit status — perfect for automation. Use `--verbose` (or `-v`) to surface those diagnostic logs alongside friendly console output so you can trace what the CLI is doing.
-
-Exit codes stay consistent across commands so scripts can branch predictably: `0` for success, `2` for validation/config errors (bad input, invalid JSON, missing rows), and `3` for unexpected problems (I/O, database, or other runtime failures).
-
-#### Adding Entries
-
-**Interactive Mode** (prompts for required fields):
-```bash
-cuddly-potato add
-```
-
-**With All Options**:
-```bash
-cuddly-potato add \
-  --author "John Doe" \
-  --tags "python,data,analysis" \
-  --context "Working on a data analysis project" \
-  --question "How do I export data to Excel in Python?" \
-  --reason "Need to share analysis results with non-technical team" \
-  --answer "Use the openpyxl library to create Excel files"
-```
-
-**Using a Different Database**:
-```bash
-cuddly-potato --db ~/Documents/my_data.db add
-```
-
-#### Updating Entries
-
-Update an existing entry by its ID:
+## Quickstart
 
 ```bash
-cuddly-potato update 1 --author "Jane Doe" --tags "updated,tags"
+python -m venv .venv        # optional but keeps dependencies isolated
+source .venv/bin/activate   # mac/linux
+pip install -r requirements.txt
+python main.py
 ```
 
-You can update one or more fields at a time. Only provide the fields you want to change.
+By default the Flask server listens on `0.0.0.0:5050`, so access `http://localhost:5050` here or `http://<your-ip>:5050` from another LAN device.
 
-#### Importing from JSON
+### Upload & select
 
-Import multiple entries from a JSON file:
+1. Use the sidebar form to upload a PDF and optionally name the session—the app writes each page to `data/split_pages/<doc-id>/page_###.pdf`.
+2. The dropdown and list show every document (newest first) along with a “New document” option—choose “New document” to reveal the upload form, pick a session to load its pages, or use “None” to clear the selection so only general mode remains.
+3. Hit the ✕ on a document row to delete everything associated with that session after confirming.
 
-```bash
-cuddly-potato import-json entries.json
-```
+### Page work
 
-**Expected JSON format**:
-```json
-[
-  {
-    "author": "John Doe",
-    "tags": "python,testing",
-    "context": "Unit testing setup",
-    "question": "How to write unit tests?",
-    "reason": "Improve code quality",
-    "answer": "Use pytest framework"
-  },
-  {
-    "author": "Jane Smith",
-    "tags": "documentation",
-    "context": "Project documentation",
-    "question": "Best practices for README files?",
-    "reason": "Make project more accessible",
-    "answer": "Include installation, usage, and examples"
-  }
-]
-```
+1. Select a page to see a compact preview placeholder (it only expands after you click *Show preview*), the metadata form, and skip/ignore indicators.
+2. Enter **Author**, **Tags** (comma-separated), **User Input**, and **Output**. Toggle **Mark complete** as needed.
+3. **Save Entry** persists the row and increments the entry count. **Save & Next** does the same and moves to the next page. **New Entry** clears the text areas but keeps author/tags so you can jot multiple ideas per page.
+4. **Skip Page** flags the page with a yellow badge (and the progress bar reflects skipped pages); it remains selectable if you want to revisit it later.
+5. **Ignore Page** removes the page from automatic resume/next flows until you unignore it.
+6. **Copy Page to Clipboard** pushes the current split page as a PDF blob to Chromium/Safari. **Download current page** (located beneath the preview toggle) opens the split PDF in a new tab only after you confirm, and **Show preview** reveals the iframe (or hides it when clicked again).
 
-You can also pipe data from stdin:
-```bash
-cat entries.json | cuddly-potato import-json -
-```
+### Navigation
 
-#### Exporting Data
+1. **Resume Next** jumps to the first page that is neither complete nor ignored.
+2. **Next Entry** just moves to the following page in order.
+3. The progress bar below the header shows how far you are (complete vs skipped).
+4. The Entry Snapshot pane toggles between the latest or a random saved entry so you can glance at recent work without scrolling.
 
-**Export to JSON**:
-```bash
-cuddly-potato export-json output.json
-```
+### General mode
 
-**Export to Excel**:
-```bash
-cuddly-potato export-excel output.xlsx
-```
+1. When no document is selected or you hit the *General mode* button (located beside the dropdown), the document workspace collapses and the general-entry panel appears.
+2. General entries capture author/tags/input/output without a page reference, and the form auto-fills with the last general author/tag you used.
+3. Use general mode for process notes, follow-up tasks, or high-level summaries while still having the per-page context available when you reselect a document.
 
-The Excel export creates a nicely formatted spreadsheet with:
-- Headers for all columns
-- Auto-adjusted column widths
-- All entries in a clean tabular format
-
-### Graphical User Interface (GUI)
-
-Launch the GUI application:
-
-```bash
-cuddly-potato gui
-```
-
-The GUI provides:
-- Modern, aesthetic interface built with CustomTkinter
-- Database selection with file picker
-- Input fields for all data schema fields
-- **Smart auto-fill**: After submitting an entry, the author and tags fields remain filled with the last entry's values, making it faster to enter multiple related entries
-- Large text boxes for context, question, reason, and answer fields to accommodate long text
-- Visual feedback with status messages
-- Remembers your last used database
-
-#### GUI Workflow
-
-1. Select or create a database file (or use the default)
-2. Fill in the entry fields:
-   - **Author** and **Tags** will auto-fill from your last entry
-   - Enter **Context**, **Question**, **Reason**, and **Answer**
-3. Click "Add Entry to Database"
-4. The form clears context/question/reason/answer but keeps author/tags for quick successive entries
-
-## Development
-
-### Running Tests
-
-The project uses pytest for testing. Run the test suite:
-
-```bash
-pytest
-```
-
-Or with coverage:
-
-```bash
-pytest --cov=cuddly_potato
-```
-
-See [TESTING.md](TESTING.md) for detailed guidance on how the suite is organized, how to write new tests, and how to keep coverage high while debugging.
-
-### Continuous Integration
-
-All pushes and pull requests to `main` run the workflow in `.github/workflows/ci.yml`. It:
-- installs the package plus dev tooling,
-- runs `python -m pytest --cov=cuddly_potato --cov-report=term-missing`,
-- lints with `ruff check cuddly_potato tests`, and
-- type-checks with `mypy cuddly_potato`.
-
-Keep local runs aligned with those commands before opening a PR to avoid CI surprises.
-
-### Code Quality
-
-Format code with Black:
-```bash
-black cuddly_potato tests
-```
-
-Lint with Ruff:
-```bash
-ruff check cuddly_potato tests
-```
-
-Type checking with mypy:
-```bash
-mypy cuddly_potato
-```
-
-## Project Structure
+## Project layout
 
 ```
 cuddly-potato/
-├── cuddly_potato/
-│   ├── __init__.py
-│   ├── cli.py          # CLI interface and commands
-│   ├── database.py     # Database operations and exports
-│   └── gui.py          # GUI application
-├── tests/
-│   ├── __init__.py
-│   ├── test_cli.py                 # Legacy CLI regression tests (unittest)
-│   ├── test_cli_flow.py            # Pytest CLI integration & edge cases
-│   ├── test_config_persistence.py  # Shared config + GUI helpers
-│   ├── test_database.py            # Database unit tests
-│   └── test_database_extended.py   # Additional DB error-path tests
-├── pyproject.toml      # Project dependencies and config
-├── TESTING.md          # Testing strategy & maintenance guide
-└── README.md
+├─ data/
+│  ├─ notes.db            # SQLite storage (created at runtime)
+│  ├─ uploads/            # Uploaded PDFs
+│  └─ split_pages/
+│     └─ <doc-id>/
+│        └─ page_001.pdf ...
+├─ scripts/
+│  └─ generate_icon.py     # Rebuilds the UI icon
+├─ src/pdfnotebook/
+│  ├─ db.py                # Persistence helpers
+│  ├─ pdf_processor.py     # Splitting logic
+│  ├─ static/
+│  │  ├─ app.css
+│  │  ├─ app.js
+│  │  └─ app_icon.png
+│  ├─ templates/
+│  │  └─ index.html
+│  └─ webapp.py            # Flask app + API
+├─ main.py                 # Launches Flask server
+├─ README.md
+├─ requirements.txt
+└─ pyproject.toml
 ```
 
-## Examples
+## Troubleshooting
 
-### Example 1: Research Notes
-
-```bash
-cuddly-potato add \
-  --author "Alice Researcher" \
-  --tags "machine-learning,research,2024" \
-  --context "Exploring neural network architectures for NLP" \
-  --question "What are the advantages of transformer models?" \
-  --reason "Writing literature review section" \
-  --answer "Transformers excel at capturing long-range dependencies through self-attention mechanisms..."
-```
-
-### Example 2: Interview Questions Database
-
-```bash
-cuddly-potato add \
-  --author "HR Team" \
-  --tags "interview,technical,python" \
-  --context "Software Engineer position - Mid-level" \
-  --question "Explain the difference between list and tuple in Python" \
-  --reason "Assess basic Python knowledge" \
-  --answer "Lists are mutable, tuples are immutable. Lists use [], tuples use ()..."
-```
-
-### Example 3: Customer Support FAQ
-
-```bash
-cuddly-potato add \
-  --author "Support Team" \
-  --tags "faq,billing,common" \
-  --context "Recurring customer question about billing" \
-  --question "How do I update my payment method?" \
-  --reason "Most frequently asked billing question" \
-  --answer "Navigate to Settings > Billing > Payment Methods, then click Update..."
-```
-
-## Tips
-
-1. **Use Tags Effectively**: Tags are comma-separated and help categorize entries for later analysis
-2. **Leverage Auto-fill**: In the GUI, author and tags persist between entries, making batch entry faster
-3. **Export Regularly**: Use `export-json` or `export-excel` to back up your data
-4. **Database Per Project**: Use the `--db` flag to maintain separate databases for different projects
-5. **Long Text is Welcome**: All text fields (context, question, reason, answer) support long, formatted text
-
-## License
-
-This project is licensed under the GNU General Public License v3.0.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+- PDF upload fails? Ensure the browser posts a `.pdf` and that the file isn’t locked—PyPDF2 handles the splitting.
+- Clipboard copy doesn’t work? The browser must expose `navigator.clipboard.write()` for binary blobs.
+- Data looks stale or corrupt? Stop the server, delete `data/notes.db`, and restart; the splits remain so you can rebuild the metadata.
+- Need to regenerate the icon? Run `python scripts/generate_icon.py`.

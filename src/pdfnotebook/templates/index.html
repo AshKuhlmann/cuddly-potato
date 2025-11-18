@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pdf Notebook Assistant</title>
+    <link rel="icon" href="{{ url_for('static', filename='app_icon.png') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div>
+          <p class="badge">Local PDF notebook</p>
+          <h1>Cuddly Potato</h1>
+        </div>
+      </header>
+
+          <div class="layout">
+        <section class="panel docs-panel">
+          <div class="panel-heading">
+            <span>Documents</span>
+            <button type="button" class="tiny-link" id="refreshDocs">Refresh</button>
+          </div>
+          <div class="doc-control">
+            <div class="doc-input-group">
+              <label for="documentSelect">Active document</label>
+              <select id="documentSelect">
+                <option value="">None</option>
+              </select>
+            </div>
+            <button type="button" class="tiny-link subtle-toggle" id="generalModeToggle">General mode</button>
+          </div>
+          <div id="documentList" class="doc-list">
+            <p class="empty">No documents yet. Upload one to begin.</p>
+          </div>
+          <div id="uploadSection" class="upload-section hidden">
+            <form id="uploadForm" class="upload-form" enctype="multipart/form-data">
+            <label for="uploadName">Session title (optional)</label>
+            <input
+              type="text"
+              id="uploadName"
+              name="name"
+              maxlength="128"
+              placeholder="Notebook session name"
+            />
+
+            <label for="uploadFile">OCR-ready PDF</label>
+            <input type="file" id="uploadFile" name="file" accept="application/pdf" required />
+
+            <button type="submit" class="primary-button">Upload & Split PDF</button>
+          </form>
+          </div>
+        </section>
+
+          <div class="workspace-column">
+            <section id="workspacePanel" class="panel workspace">
+              <div class="workspace-header">
+                <div>
+                  <p class="mini-label">Active document</p>
+                  <h2 id="currentDocumentName">Select or upload a PDF</h2>
+                </div>
+              </div>
+              <div class="progress-track">
+                <div class="progress-bar">
+                  <div id="progressComplete" class="progress-segment"></div>
+                  <div id="progressSkipped" class="progress-segment skipped"></div>
+                </div>
+                <div id="progressLabel" class="progress-label">No document loaded</div>
+              </div>
+              <div id="documentWorkspace" class="workspace-grid">
+                <div class="panel page-panel">
+                  <div class="panel-heading">
+                    <span>Pages</span>
+                  </div>
+                  <div id="pageList" class="page-items">
+                    <p class="empty">Upload a document to list pages.</p>
+                  </div>
+                </div>
+
+                <div class="workspace-details">
+                  <div class="panel detail-panel">
+                    <div class="panel-heading detail-heading">
+                      <div class="page-meta">
+                        <span id="pageHeading">Choose a page to work on</span>
+                        <span id="entryCount" class="pill">0 entries</span>
+                      </div>
+                    </div>
+
+                    <div class="form-grid">
+                      <label for="authorInput">Author</label>
+                      <input type="text" id="authorInput" />
+
+                      <label for="tagsInput">Tags (comma-separated)</label>
+                      <input type="text" id="tagsInput" placeholder="algorithm, question" />
+
+                      <label for="userInput">User Input</label>
+                      <textarea id="userInput" rows="4"></textarea>
+
+                      <label for="outputInput">Output</label>
+                      <textarea id="outputInput" rows="4"></textarea>
+
+                    </div>
+
+                    <div class="button-row actions-row">
+                      <button type="button" class="primary-button" id="saveAndNextPageBtn">Save &amp; next page</button>
+                      <button type="button" class="ghost-button" id="skipPageBtn">Skip page</button>
+                      <button type="button" class="primary-button soft" id="saveAndNextEntryBtn">Save &amp; next entry</button>
+                    </div>
+                  </div>
+
+                <div class="panel preview-panel collapsed" id="previewPanel">
+                  <div class="panel-heading">
+                    <span>Page preview</span>
+                    <button type="button" class="ghost-button tiny-link" id="togglePreviewBtn">Show preview</button>
+                  </div>
+                  <div class="preview-actions-row">
+                    <button type="button" class="ghost-button tiny-link" id="downloadPageBtn" disabled>Download current page</button>
+                  </div>
+                  <div class="preview-actions-row">
+                    <a class="mini-link" id="openPreview" href="#" target="_blank" rel="noopener">Open in new tab</a>
+                  </div>
+                  <div class="preview-summary" id="previewSummary">
+                    Preview hidden—click Show preview to load the page.
+                  </div>
+                  <div class="preview-content">
+                    <iframe id="pagePreview" title="Current page preview"></iframe>
+                  </div>
+                </div>
+                </div>
+              </div>
+            </section>
+
+            <div id="generalSection" class="general-section">
+              <section class="panel general-panel" id="generalPanel">
+              <div class="panel-heading">
+                <span>General mode</span>
+              </div>
+                <p class="general-lead">
+                  Capture thoughts that are not tied to any specific page. This section keeps the last
+                  author/tags ready for fast entry.
+                </p>
+                <div class="form-grid general">
+                  <label for="generalAuthor">Author</label>
+                  <input type="text" id="generalAuthor" />
+
+                  <label for="generalTags">Tags (comma-separated)</label>
+                  <input type="text" id="generalTags" />
+
+                  <label for="generalUserInput">User Input</label>
+                  <textarea id="generalUserInput" rows="3"></textarea>
+
+                  <label for="generalOutputInput">Output</label>
+                  <textarea id="generalOutputInput" rows="3"></textarea>
+                </div>
+                <div class="button-row">
+                  <button type="button" class="primary-button" id="saveGeneralBtn">Save General Entry</button>
+                </div>
+                <div id="generalEntriesList" class="general-entries">
+                  <p class="empty">No general entries yet.</p>
+                </div>
+              </section>
+
+              <section class="panel snapshot-panel" id="snapshotPanel">
+                <div class="panel-heading">
+                  <span>Entry snapshot</span>
+                  <div class="workspace-actions">
+                    <button type="button" class="ghost-button tiny-link" id="loadLastEntry">Last entry</button>
+                    <button type="button" class="ghost-button tiny-link" id="loadRandomEntry">Random entry</button>
+                  </div>
+                </div>
+                <div id="entrySnapshot" class="snapshot-body">
+                  <p class="empty">No snapshot loaded.</p>
+                </div>
+              </section>
+            </div>
+          </div>
+      </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
