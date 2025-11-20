@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 from typing import Any
+from datetime import datetime
 
 from flask import (
     Flask,
@@ -12,7 +13,9 @@ from flask import (
     render_template,
     request,
     send_from_directory,
+    Response,
 )
+from werkzeug.utils import secure_filename
 
 from .db import DatabaseManager, GeneralEntry, PageEntry
 from .pdf_processor import ensure_page_splits
@@ -30,12 +33,25 @@ SPLIT_ROOT.mkdir(parents=True, exist_ok=True)
 
 db_manager = DatabaseManager(DB_PATH)
 
+# Ensure global general document exists
+if not db_manager.get_document("global-general"):
+    db_manager.create_document(
+        "global-general",
+        "General Notebook",
+        Path("general_notebook_dummy"),
+        0
+    )
+
 app = Flask(
     __name__,
     static_folder="static",
     template_folder="templates",
 )
 app.config["JSON_SORT_KEYS"] = False
+app.config["UPLOAD_FOLDER"] = UPLOAD_ROOT
+app.config["ATTACHMENTS_FOLDER"] = UPLOAD_ROOT / "attachments"
+app.config["ATTACHMENTS_FOLDER"].mkdir(parents=True, exist_ok=True)
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # 64MB limit
 
 
 def _document_payload(doc: Any) -> dict[str, Any]:
@@ -56,6 +72,7 @@ def _general_payload(entry: GeneralEntry) -> dict[str, Any]:
         "output": entry.output,
         "tags": entry.tags,
         "created_at": entry.created_at.isoformat(),
+        "attachment_path": entry.attachment_path,
     }
 
 
@@ -69,6 +86,7 @@ def _page_entry_payload(entry: PageEntry) -> dict[str, Any]:
         "ignored": entry.ignored,
         "tags": entry.tags,
         "created_at": entry.created_at.isoformat(),
+        "attachment_path": entry.attachment_path,
     }
 
 
@@ -77,10 +95,20 @@ def index() -> str:
     return render_template("index.html")
 
 
+@app.route("/test-ui")
+def test_ui() -> str:
+    return render_template("test_ui.html")
+
+
 @app.route("/api/documents", methods=["GET"])
 def list_documents() -> Any:
     docs = db_manager.list_documents()
     return jsonify({"documents": [_document_payload(doc) for doc in docs]})
+
+
+@app.route("/attachments/<path:filename>")
+def get_attachment(filename: str) -> Response:
+    return send_from_directory(app.config["ATTACHMENTS_FOLDER"], filename)
 
 
 @app.route("/api/documents", methods=["POST"])
@@ -115,6 +143,10 @@ def delete_document(doc_id: str) -> Any:
             pass
     if split_dir.exists():
         shutil.rmtree(split_dir, ignore_errors=True)
+    # Also delete attachments for this doc_id
+    doc_attachments_folder = app.config["ATTACHMENTS_FOLDER"] / doc_id
+    if doc_attachments_folder.exists():
+        shutil.rmtree(doc_attachments_folder, ignore_errors=True)
     db_manager.delete_document(doc_id)
     return jsonify({"deleted": doc_id})
 
@@ -162,14 +194,25 @@ def list_general_entries(doc_id: str) -> Any:
 
 
 @app.route("/api/general", methods=["POST"])
-def save_general_entry() -> Any:
-    payload = request.get_json(force=True)
-    doc_id = payload.get("doc_id")
-    author = payload.get("author", "").strip()
-    user_input = payload.get("user_input", "").strip()
-    output = payload.get("output", "").strip()
-    tags = payload.get("tags", "").strip()
+def add_general_entry() -> Response:
+    if request.is_json:
+        data = request.json
+        attachment_path = None
+    else:
+        data = request.form
+        file = request.files.get("attachment")
+        attachment_path = None
+        if file and file.filename:
+            filename = secure_filename(file.filename)
+            doc_folder = app.config["ATTACHMENTS_FOLDER"] / data["doc_id"]
+            doc_folder.mkdir(parents=True, exist_ok=True)
 
+            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            save_name = f"{timestamp}_{filename}"
+            file.save(doc_folder / save_name)
+            attachment_path = f"{data['doc_id']}/{save_name}"
+
+    doc_id = data.get("doc_id")
     if not doc_id:
         return jsonify({"error": "doc_id is required."}), 400
 
@@ -177,13 +220,15 @@ def save_general_entry() -> Any:
     if not doc:
         abort(404)
 
-    db_manager.add_general_entry(doc_id, author, user_input, output, tags)
-    entries = db_manager.list_general_entries(doc_id)
-    latest = db_manager.get_latest_general_entry(doc_id)
-    return jsonify({
-        "entries": [_general_payload(entry) for entry in entries],
-        "latest": _general_payload(latest) if latest else None,
-    })
+    db_manager.add_general_entry(
+        doc_id=data["doc_id"],
+        author=data.get("author", ""),
+        user_input=data.get("user_input", ""),
+        output=data.get("output", ""),
+        tags=data.get("tags", ""),
+        attachment_path=attachment_path,
+    )
+    return jsonify({"status": "ok"})
 
 
 @app.route("/api/entry/latest/<doc_id>", methods=["GET"])
@@ -226,35 +271,57 @@ def get_page(doc_id: str, page_number: int) -> Any:
             "skipped": page.skipped,
             "tags": page.tags,
             "updated_at": page.updated_at.isoformat(),
+            "attachment_path": page.attachment_path,
             }
         }
     )
 
 
 @app.route("/api/entry", methods=["POST"])
-def save_entry() -> Any:
-    payload = request.get_json(force=True)
-    doc_id = payload.get("doc_id")
-    page_number = payload.get("page_number")
-    author = payload.get("author", "").strip()
-    user_input = payload.get("user_input", "").strip()
-    output = payload.get("output", "").strip()
-    complete = bool(payload.get("complete"))
-    tags = payload.get("tags", "").strip()
+def add_entry() -> Response:
+    """Record a new entry for a page (history + current state)."""
+    # Check if it's a JSON request or Multipart
+    if request.is_json:
+        data = request.json
+        attachment_path = None
+    else:
+        data = request.form
+        file = request.files.get("attachment")
+        attachment_path = None
+        if file and file.filename:
+            filename = secure_filename(file.filename)
+            # Create doc-specific folder
+            doc_folder = app.config["ATTACHMENTS_FOLDER"] / data["doc_id"]
+            doc_folder.mkdir(parents=True, exist_ok=True)
+
+            # Save file
+            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            save_name = f"{timestamp}_{filename}"
+            file.save(doc_folder / save_name)
+            attachment_path = f"{data['doc_id']}/{save_name}"
+
+    doc_id = data.get("doc_id")
+    page_number = data.get("page_number")
 
     if not doc_id or not page_number:
         return jsonify({"error": "doc_id and page_number are required."}), 400
 
+    # Also update the current note state
     db_manager.upsert_page_note(
-        doc_id, page_number, author, user_input, output, complete, tags
+        doc_id=data["doc_id"],
+        page_number=int(data["page_number"]),
+        author=data.get("author", ""),
+        user_input=data.get("user_input", ""),
+        output=data.get("output", ""),
+        complete=bool(data.get("complete", False)),
+        tags=data.get("tags", ""),
+        attachment_path=attachment_path,
     )
-    entries = db_manager.get_entry_count(doc_id, page_number)
+
+    # Add to history
     notes = db_manager.fetch_page_notes(doc_id)
-    note = next((note for note in notes if note.page_number == page_number), None)
+    note = next((note for note in notes if note.page_number == int(page_number)), None)
     db_manager.add_page_entry(
-        doc_id,
-        page_number,
-        author,
         user_input,
         output,
         complete,

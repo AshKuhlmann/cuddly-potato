@@ -34,6 +34,7 @@ class PageNote:
     ignored: bool
     tags: str
     skipped: bool
+    attachment_path: Optional[str]
     updated_at: datetime
 
 
@@ -99,6 +100,7 @@ class DatabaseManager:
             ignored INTEGER DEFAULT 0,
             skipped INTEGER DEFAULT 0,
             tags TEXT DEFAULT '',
+            attachment_path TEXT,
             updated_at TEXT NOT NULL,
             UNIQUE(doc_id, page_number),
                 FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
@@ -117,6 +119,7 @@ class DatabaseManager:
                 complete INTEGER DEFAULT 0,
                 ignored INTEGER DEFAULT 0,
                 tags TEXT DEFAULT '',
+                attachment_path TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
             )
@@ -131,6 +134,7 @@ class DatabaseManager:
                 user_input TEXT DEFAULT '',
                 output TEXT DEFAULT '',
                 tags TEXT DEFAULT '',
+                attachment_path TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
             )
@@ -144,9 +148,14 @@ class DatabaseManager:
             "page_notes": {
                 "tags": "TEXT DEFAULT ''",
                 "skipped": "INTEGER DEFAULT 0",
+                "attachment_path": "TEXT",
             },
             "page_entries": {
                 "tags": "TEXT DEFAULT ''",
+                "attachment_path": "TEXT",
+            },
+            "general_entries": {
+                "attachment_path": "TEXT",
             },
         }
         for table, columns in expectations.items():
@@ -214,13 +223,14 @@ class DatabaseManager:
         output: str,
         complete: bool,
         tags: str,
+        attachment_path: Optional[str] = None,
     ) -> None:
         """Update the current metadata for a page and refresh the document timestamp."""
         now = datetime.utcnow().isoformat()
         self.connection.execute(
             """
             INSERT INTO page_notes
-                (doc_id, page_number, author, user_input, output, complete, tags, updated_at)
+                (doc_id, page_number, author, user_input, output, complete, tags, attachment_path, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(doc_id, page_number) DO UPDATE SET
                 author=excluded.author,
@@ -228,6 +238,7 @@ class DatabaseManager:
                 output=excluded.output,
                 complete=excluded.complete,
                 tags=excluded.tags,
+                attachment_path=excluded.attachment_path,
                 updated_at=excluded.updated_at
             """,
             (
@@ -238,6 +249,7 @@ class DatabaseManager:
                 output,
                 int(complete),
                 tags,
+                attachment_path,
                 now,
             ),
         )
@@ -256,14 +268,15 @@ class DatabaseManager:
         complete: bool,
         ignored: bool,
         tags: str,
+        attachment_path: Optional[str] = None,
     ) -> None:
         """Persist a historical entry for auditing or review."""
         now = datetime.utcnow().isoformat()
         self.connection.execute(
             """
             INSERT INTO page_entries
-                (doc_id, page_number, author, user_input, output, complete, ignored, tags, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (doc_id, page_number, author, user_input, output, complete, ignored, tags, attachment_path, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 doc_id,
@@ -274,6 +287,7 @@ class DatabaseManager:
                 int(complete),
                 int(ignored),
                 tags,
+                attachment_path,
                 now,
             ),
         )
@@ -312,15 +326,16 @@ class DatabaseManager:
         user_input: str,
         output: str,
         tags: str,
+        attachment_path: Optional[str] = None,
     ) -> None:
         now = datetime.utcnow().isoformat()
         self.connection.execute(
             """
             INSERT INTO general_entries
-                (doc_id, author, user_input, output, tags, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (doc_id, author, user_input, output, tags, attachment_path, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (doc_id, author, user_input, output, tags, now),
+            (doc_id, author, user_input, output, tags, attachment_path, now),
         )
         self.connection.commit()
 
@@ -400,6 +415,7 @@ class DatabaseManager:
             ignored=bool(row["ignored"]),
             skipped=bool(row["skipped"]),
             tags=row["tags"],
+            attachment_path=row["attachment_path"],
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
 
@@ -420,6 +436,7 @@ class DatabaseManager:
             user_input=row["user_input"],
             output=row["output"],
             tags=row["tags"],
+            attachment_path=row["attachment_path"],
             created_at=datetime.fromisoformat(row["created_at"]),
         )
 
@@ -433,6 +450,7 @@ class DatabaseManager:
             complete=bool(row["complete"]),
             ignored=bool(row["ignored"]),
             tags=row["tags"],
+            attachment_path=row["attachment_path"],
             created_at=datetime.fromisoformat(row["created_at"]),
         )
 
