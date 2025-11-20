@@ -321,14 +321,28 @@ def add_entry() -> Response:
     # Add to history
     notes = db_manager.fetch_page_notes(doc_id)
     note = next((note for note in notes if note.page_number == int(page_number)), None)
+    
+    # Fix: retrieve values from data dictionary
+    user_input = data.get("user_input", "")
+    output = data.get("output", "")
+    complete = bool(data.get("complete", False))
+    tags = data.get("tags", "")
+
     db_manager.add_page_entry(
+        doc_id,
+        int(page_number),
+        data.get("author", ""),
         user_input,
         output,
         complete,
         bool(note.ignored) if note else False,
         tags,
+        attachment_path
     )
-    return jsonify({"entry_count": entries})
+    
+    # Fix: get actual count
+    entries_count = db_manager.get_entry_count(doc_id, int(page_number))
+    return jsonify({"entry_count": entries_count})
 
 
 @app.route("/api/ignore", methods=["POST"])

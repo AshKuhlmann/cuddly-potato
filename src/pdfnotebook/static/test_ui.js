@@ -35,6 +35,7 @@ const elements = {
     generalList: document.getElementById("generalList"),
     attachmentInput: document.getElementById("attachmentInput"),
     currentAttachment: document.getElementById("currentAttachment"),
+    newEntryBtn: document.getElementById("newEntryBtn"),
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -46,6 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.uploadForm.addEventListener("submit", handleUpload);
     elements.cancelUpload.addEventListener("click", hideUpload);
     elements.saveGeneralBtn.addEventListener("click", handleGeneralSave);
+    elements.newEntryBtn.addEventListener("click", handleNewEntry);
 });
 
 async function fetchJson(url, options = {}) {
@@ -348,10 +350,20 @@ async function handleSave() {
     }
 
     try {
-        await fetchJson("/api/entry", {
+        const response = await fetchJson("/api/entry", {
             method: "POST",
             body: formData // fetch handles Content-Type for FormData
         });
+
+        // Update entry count from response
+        if (response.entry_count !== undefined) {
+            elements.entryCount.textContent = `${response.entry_count} entries`;
+            // Also update the page in the list if we want to track it there, though it's not currently shown in the list item
+            const page = state.pages.find(p => p.page_number === state.selectedPageNumber);
+            if (page) {
+                page.entry_count = response.entry_count;
+            }
+        }
 
         // Update local state
         const page = state.pages.find(p => p.page_number === state.selectedPageNumber);
@@ -393,4 +405,15 @@ function handlePageDownload() {
     if (!state.docId || !state.selectedPageNumber) return;
     const url = `/pages/${state.docId}/${String(state.selectedPageNumber).padStart(3, "0")}`;
     window.open(url, "_blank");
+}
+
+async function handleNewEntry() {
+    // "New Entry" behaves exactly like "Save Changes" in that it saves the current form state as a new entry.
+    // The backend add_entry function always adds a new entry to the history.
+    // So we can just reuse handleSave, or call it directly.
+    // If we wanted to clear the form *after* saving, we would do that here.
+    // But the user request implies just adding a button to trigger the entry creation.
+    // Let's reuse handleSave but maybe give different feedback?
+    // For now, reusing handleSave is the safest bet to ensure consistency.
+    await handleSave();
 }
